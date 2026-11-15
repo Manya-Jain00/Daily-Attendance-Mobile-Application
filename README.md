@@ -75,14 +75,28 @@ Dashboard
  ├── Today: present / absent / pending per team
  ├── Team view → that day's full log
  ├── Employee view → history for any date range
- └── Monthly report → export to Excel/CSV
+ └── Reports → export to Excel
 ```
 
 ### 5. Month-end payroll
 ```
-Monthly Report → pick month → review → export Excel → process salaries
+Reports → pick a month (or any dates) → review → share the Excel file → process salaries
 ```
-The report shows, per employee: days present, absent, half-days, leaves, late marks and total hours.
+The report shows, per employee: days present, absent, half-days, leaves, late marks, hours and **Dihadi** (days' pay earned, see below). The app doesn't store pay rates: in the Excel file the CEO types each worker's daily rate once on the Summary tab, and the Amount, D\*A and pay totals fill in by themselves. The Excel file has a summary tab, an "All employees" sheet with each worker's block (one row per day, yellow total; a printed page each), and one tab per worker.
+
+## Pay rule: Dihadi
+
+Each day's hours earn a share of a day's pay, the **Dihadi**. Pay = total Dihadi × the worker's daily rate (typed by the CEO in the Excel file).
+
+| Hours | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Dihadi | 0.125 | 0.25 | 0.5 | 0.5 | 0.625 | 0.75 | 0.875 | 1 | 1 | 1.25 | 1.25 | 1.5 | 1.625 | 1.75 | 1.75 | 2 |
+
+- Hours are rounded to the nearest half hour (8 h 15 m → 8 h 30 m; 8 h 14 m → 8 h). A half hour adds 0.0625 (8 h 30 m and 9 h 30 m → 1.0625).
+- Past 16 hours, each hour adds 0.125.
+- Absent and leave earn 0. Late marks are shown but don't reduce pay.
+- A day with an in or out time missing earns 0 and is flagged, so it can be fixed.
+- The rule is in [day_value.dart](lib/core/models/day_value.dart).
 
 ---
 
@@ -92,7 +106,7 @@ The report shows, per employee: days present, absent, half-days, leaves, late ma
 |---|---|
 | Office hours | 9:30 AM – 6:30 PM |
 | Late after | 9:45 AM |
-| Half-day | Less than 4 hours worked |
+| Half-day (status shown on the sheet) | Less than 4 hours worked. Pay goes by the Dihadi table, not the status |
 | Manager edit window | Last 7 days |
 
 ---
@@ -193,7 +207,7 @@ Firebase can only create a login by signing in as it, which would log the CEO ou
 - [x] Team selector for managers with several teams (one team: just its name)
 - [x] Security rules for employees and monthly lists: a manager changes only their own teams' lists, for this month or next (tested in [firestore_tests/](firestore_tests/))
 - [x] Deploy the updated security rules
-- [ ] Check on the emulator: log in as a manager with two teams, add employees to each, put one person on both lists, check the next month starts with the same people
+- [x] Check on the emulator: log in as a manager with two teams, add employees to each, put one person on both lists, check the next month starts with the same people
 
 **Done when:** every team has its employee list.
 
@@ -207,7 +221,7 @@ Firebase can only create a login by signing in as it, which would log the CEO ou
 - [x] Edit past days (the edit window from Settings, 7 days by default) on the Past days tab; older days are view only for managers
 - [x] Security rules for attendance: a manager saves only their own teams' sheets, within the edit window; the CEO any (tested in [firestore_tests/](firestore_tests/))
 - [x] Deploy the updated security rules
-- [ ] Check on the emulator: mark a team, save, lend a worker to a second team, correct yesterday from Past days
+- [x] Check on the emulator: mark a team, save, lend a worker to a second team, correct yesterday from Past days
 
 **Done when:** a manager can fully replace the paper register. ✅ *First usable version.*
 
@@ -215,18 +229,21 @@ Firebase can only create a login by signing in as it, which would log the CEO ou
 - [x] Today's overview per team (present / absent / pending), plus whole-company totals that count each person once. Step back to any earlier day with the arrows or the calendar
 - [x] Team view: that day's full log. It's the managers' sheet with every team to switch to, and the CEO can correct any day up to today (no edit window)
 - [x] Employee history for any date range (up to a year at a time): days present, half-days, absent, leave, late marks, hours, and each day's team and times
-- [ ] Check on the emulator: as CEO, see today's counts, open a team, correct a day older than 7 days, look up one person's history
+- [x] Check on the emulator: as CEO, see today's counts, open a team, correct a day older than 7 days, look up one person's history
 
 **Done when:** the CEO can monitor all attendance from the phone.
 
 ### Phase 7: Monthly reports
-- [ ] Monthly summary per employee (present, absent, half-days, leaves, late marks, total hours)
-- [ ] Export to Excel / CSV and share from the phone
+- [x] Monthly summary per employee (present, absent, half-days, leaves, late marks, total hours) on the CEO's Reports tab. Opens on last month; step to any month, or pick any dates. Lists everyone a team marked, plus active people on a team list with nothing marked
+- [x] Dihadi: the firm's hours table, total per employee and for everyone. Warns about days with a missing in or out time
+- [x] Export to an Excel file laid out like the firm's sheet: summary tab, all employees' blocks on one sheet (a printed page each), one tab per employee. The CEO types each daily rate once on the Summary tab; Amount, D\*A and pay totals are Excel formulas that fill in from it
+- [ ] Check on the emulator: check Dihadi in Reports against the table, try Custom dates (1–15), share the Excel file, type a rate on the Summary tab and compare with the paper sheet
+- [x] Check on the emulator: open Reports, step through months, share the Excel file and open it in a spreadsheet app
 
 **Done when:** the CEO can process salaries from the report.
 
 ### Phase 8: Testing and release
-- [ ] Confirm the timing rules with the firm (what counts as a full day and a half-day, breaks, minimum hours) and update the app to match
+- [x] Confirm the timing rules with the firm (what counts as a full day and a half-day, breaks, minimum hours) and update the app to match (see "Pay rule: Dihadi")
 - [ ] Finalise and test the security rules with sample data
 - [ ] Create the app signing key and **back it up safely** (it can't be recovered, and without it you can't release updates)
 - [ ] Build the release APK

@@ -234,25 +234,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: isManager
-                              ? Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                  child: Text(
-                                    'Forgot your PIN? Ask your CEO to reset it.',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                )
-                              : TextButton(
-                                  onPressed: busy ? null : _onForgotPassword,
-                                  child: const Text('Forgot password?'),
-                                ),
-                        ),
+                        if (isManager)
+                          const SizedBox(height: 24)
+                        else
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: busy ? null : _onForgotPassword,
+                              child: const Text('Forgot password?'),
+                            ),
+                          ),
                         if (_error != null) ...[
                           ErrorBanner(message: _error!),
                           const SizedBox(height: 16),

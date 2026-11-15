@@ -2,12 +2,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/data/company_repository.dart';
 import '../../core/data/employee_repository.dart';
-import '../../shared/widgets/placeholder_page.dart';
 import '../../shared/widgets/role_shell.dart';
 import '../auth/auth_scope.dart';
 import '../auth/auth_service.dart';
 import 'dashboard_page.dart';
 import 'managers_page.dart';
+import 'reports_page.dart';
 import 'settings_page.dart';
 import 'teams_page.dart';
 
@@ -70,18 +70,11 @@ class _CeoHomeScreenState extends State<CeoHomeScreen> {
           selectedIcon: Icons.badge,
           page: ManagersPage(repository: repository, companyCode: _companyCode),
         ),
-        const ShellTab(
+        ShellTab(
           label: 'Reports',
           icon: Icons.insert_chart_outlined,
           selectedIcon: Icons.insert_chart,
-          page: PlaceholderPage(
-            icon: Icons.insert_chart_outlined,
-            title: 'Monthly reports',
-            description:
-                'Monthly attendance summary per employee, exported to Excel '
-                'for payroll.',
-            phase: 7,
-          ),
+          page: ReportsPage(key: ObjectKey(attendance), repository: attendance),
         ),
         ShellTab(
           label: 'Settings',

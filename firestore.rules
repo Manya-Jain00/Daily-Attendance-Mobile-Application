@@ -1,6 +1,7 @@
 rules_version = '2';
 
-// Daily Attendance: Firestore security rules (Phase 5: daily attendance).
+// Daily Attendance: Firestore security rules (final for the first release).
+// Tests: firestore_tests/rules.test.js (npm test there; needs Java).
 //
 // Layout:
 //   users/{uid}                     one profile per login: companyId, role, ...
@@ -74,6 +75,30 @@ service cloud.firestore {
     function managerEmail(data) {
       return data.username + '@' + data.companyCode.lower()
         + '.login.daily-attendance-b1b1e.firebaseapp.com';
+    }
+
+    function validTime(value) {
+      return value is string && value.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    // Office settings, with the same limits as the Settings screen
+    // (lib/core/models/company.dart). Manager saves read managerEditDays, so
+    // a bad value here would lock every manager out.
+    function validSettings(settings) {
+      return settings is map
+        && settings.keys().hasOnly(['officeStart', 'officeEnd', 'lateAfter',
+             'halfDayBelowHours', 'managerEditDays'])
+        && settings.keys().hasAll(['officeStart', 'officeEnd', 'lateAfter',
+             'halfDayBelowHours', 'managerEditDays'])
+        && validTime(settings.officeStart)
+        && validTime(settings.officeEnd)
+        && validTime(settings.lateAfter)
+        && settings.halfDayBelowHours is number
+        && settings.halfDayBelowHours > 0
+        && settings.halfDayBelowHours <= 12
+        && settings.managerEditDays is int
+        && settings.managerEditDays >= 0
+        && settings.managerEditDays <= 31;
     }
 
     function validUserFields(data) {
@@ -157,7 +182,7 @@ service cloud.firestore {
              .data.companyId == companyId
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.createdAt == request.time
-        && request.resource.data.settings is map
+        && validSettings(request.resource.data.settings)
         && getAfter(userPath(request.auth.uid)).data.companyId == companyId
         && getAfter(userPath(request.auth.uid)).data.role == 'ceo';
 
@@ -167,7 +192,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['name', 'settings'])
         && validName(request.resource.data.name)
-        && request.resource.data.settings is map;
+        && validSettings(request.resource.data.settings);
 
       allow delete: if false;
 

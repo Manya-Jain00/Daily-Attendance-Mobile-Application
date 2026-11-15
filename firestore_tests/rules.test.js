@@ -1,5 +1,6 @@
 // Tests for ../firestore.rules, run against the local Firestore emulator.
 // Run with:  npm test   (from this folder; needs Java on PATH)
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
@@ -8,8 +9,13 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
+  runTransaction,
+  where,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -233,6 +239,17 @@ describe('CEO sign-up', () => {
     }
   });
 
+  test('the company must start with valid settings', async () => {
+    await assertFails(
+      signUpBatch(as('new1'), 'new1', 'cNew', {
+        company: { settings: { ...settings, managerEditDays: 400 } },
+      }).commit(),
+    );
+    await assertFails(
+      signUpBatch(as('new1'), 'new1', 'cNew', { company: { settings: {} } }).commit(),
+    );
+  });
+
   test("the CEO profile must carry the company's code", async () => {
     await assertFails(
       signUpBatch(as('new'), 'new', 'newco', {
@@ -411,6 +428,28 @@ describe('companies and their data', () => {
         'settings.lateAfter': '10:00',
       }),
     );
+  });
+
+  test('settings must have the fields and limits of the Settings screen', async () => {
+    const ref = doc(as('ceo1'), 'companies', 'c1');
+    const save = (extra) =>
+      updateDoc(ref, { name: 'Acme', settings: { ...settings, ...extra } });
+    // What the app writes: the whole settings map, including half hours.
+    await assertSucceeds(save({ halfDayBelowHours: 4.5, managerEditDays: 0 }));
+    await assertSucceeds(save({ halfDayBelowHours: 12, managerEditDays: 31 }));
+    // Out of range, wrong type, bad time, missing or extra fields.
+    await assertFails(save({ managerEditDays: 32 }));
+    await assertFails(save({ managerEditDays: -1 }));
+    await assertFails(save({ managerEditDays: '7' }));
+    await assertFails(save({ managerEditDays: 7.5 }));
+    await assertFails(save({ halfDayBelowHours: 0 }));
+    await assertFails(save({ halfDayBelowHours: 13 }));
+    await assertFails(save({ lateAfter: '9:45' }));
+    await assertFails(save({ officeEnd: '24:00' }));
+    await assertFails(save({ note: 'x' }));
+    const { managerEditDays, ...missing } = settings;
+    await assertFails(updateDoc(ref, { settings: missing }));
+    await assertFails(updateDoc(ref, { settings: 'none' }));
   });
 
   test('the company code never changes and code records are closed', async () => {
@@ -843,5 +882,195 @@ describe('daily attendance (Phase 5)', () => {
     await assertFails(getDoc(sheetRef(as('ceo2'), 't3', d)));
     await assertFails(getDoc(sheetRef(as('mgr2'), 't3', d)));
     await assertFails(save('ceo2', 't1', d));
+  });
+});
+
+// A whole firm going through the app's real flow, with the same fields the
+// app writes (lib/core/data/*_repository.dart, firebase_auth_service.dart).
+describe('sample firm, end to end', () => {
+  const dayKey = (offset = 0) =>
+    new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+  const monthKey = () => dayKey().slice(0, 7);
+
+  const code = 'SHRE34';
+  const firm = 'firm1';
+  const managerEmail = (username) =>
+    `${username}@${code.toLowerCase()}.login.daily-attendance-b1b1e.firebaseapp.com`;
+  const manager = (uid, username) => as(uid, managerEmail(username));
+  const at = (db, ...path) => doc(db, 'companies', firm, ...path);
+
+  /** The app's addEmployee: check the Emp ID is free, add, put on the list. */
+  const addEmployee = (db, empId, name, teamId, list) =>
+    runTransaction(db, async (tx) => {
+      const ref = at(db, 'employees', empId);
+      if ((await tx.get(ref)).exists()) throw new Error('taken');
+      tx.set(ref, {
+        empId,
+        name,
+        designation: 'Karigar',
+        active: true,
+        createdAt: serverTimestamp(),
+      });
+      tx.set(at(db, 'rosters', `${teamId}_${monthKey()}`), {
+        teamId,
+        month: monthKey(),
+        empIds: [...list, empId],
+        updatedAt: serverTimestamp(),
+      });
+    });
+
+  /** The app's saveAttendance. */
+  const saveDay = (db, uid, teamId, date, entries) =>
+    setDoc(at(db, 'attendance', `${teamId}_${date}`), {
+      teamId,
+      date,
+      entries,
+      markedBy: uid,
+      updatedAt: serverTimestamp(),
+    });
+
+  const present = (inTime, outTime, minutes, late = false) => ({
+    status: 'present',
+    inTime,
+    outTime,
+    minutes,
+    late,
+  });
+
+  /** The Reports query: every sheet in a date range. */
+  const report = (db, from, to) =>
+    getDocs(
+      query(
+        collection(db, 'companies', firm, 'attendance'),
+        where('date', '>=', from),
+        where('date', '<=', to),
+      ),
+    );
+
+  test('sign up, set up, mark a week, report, then a manager leaves', async () => {
+    // 1. The CEO signs up and creates the firm.
+    const owner = as('owner');
+    await assertSucceeds(signUpBatch(owner, 'owner', firm, { code }).commit());
+
+    // 2. Teams and two managers.
+    for (const [id, name] of [['cut', 'Cutting'], ['sew', 'Stitching']]) {
+      await assertSucceeds(
+        setDoc(at(owner, 'teams', id), { name, createdAt: serverTimestamp() }),
+      );
+    }
+    for (const [uid, username, teamIds] of [
+      ['m-ravi', 'ravi', ['cut']],
+      ['m-sita', 'sita', ['sew']],
+    ]) {
+      await assertSucceeds(
+        setDoc(doc(owner, 'users', uid), {
+          companyId: firm,
+          companyCode: code,
+          role: 'manager',
+          name: username,
+          username,
+          email: managerEmail(username),
+          teamIds,
+          active: true,
+          createdAt: serverTimestamp(),
+        }),
+      );
+    }
+
+    // 3. Each manager logs in, reads their profile and the firm, adds staff.
+    const ravi = manager('m-ravi', 'ravi');
+    const sita = manager('m-sita', 'sita');
+    await assertSucceeds(getDoc(doc(ravi, 'users', 'm-ravi')));
+    await assertSucceeds(getDoc(at(ravi)));
+    await assertSucceeds(addEmployee(ravi, 'E101', 'Asha', 'cut', []));
+    await assertSucceeds(addEmployee(ravi, 'E102', 'Bilal', 'cut', ['E101']));
+    await assertSucceeds(addEmployee(sita, 'E201', 'Chitra', 'sew', []));
+    // An Emp ID can't be taken twice, even from another team.
+    await assert.rejects(addEmployee(sita, 'E101', 'Someone', 'sew', ['E201']));
+    // Ravi can't edit Sita's list.
+    await assertFails(
+      setDoc(at(ravi, 'rosters', `sew_${monthKey()}`), {
+        teamId: 'sew',
+        month: monthKey(),
+        empIds: ['E201', 'E102'],
+        updatedAt: serverTimestamp(),
+      }),
+    );
+
+    // 4. A week of attendance. Bilal is lent to Stitching on one day.
+    for (let offset = -6; offset <= 0; offset++) {
+      const date = dayKey(offset);
+      const lent = offset === -2;
+      await assertSucceeds(
+        saveDay(ravi, 'm-ravi', 'cut', date, {
+          E101: present('09:30', '18:30', 540),
+          E102: lent
+            ? { status: 'absent', workingIn: 'sew' }
+            : present('09:50', '14:00', 250, true),
+        }),
+      );
+      await assertSucceeds(
+        saveDay(sita, 'm-sita', 'sew', date, {
+          E201: offset === -3 ? { status: 'leave' } : present('09:30', '18:00', 510),
+          ...(lent ? { E102: { ...present('09:30', '18:30', 540), guest: true } } : {}),
+        }),
+      );
+    }
+    // Nobody marks another team's day, or one outside the edit window.
+    await assertFails(saveDay(ravi, 'm-ravi', 'sew', dayKey(), {}));
+    await assertFails(saveDay(ravi, 'm-ravi', 'cut', dayKey(-20), {}));
+
+    // 5. The CEO's report sees every sheet; the CEO corrects an old day.
+    const week = await assertSucceeds(report(owner, dayKey(-6), dayKey()));
+    assert.equal(week.size, 14);
+    await assertSucceeds(
+      saveDay(owner, 'owner', 'cut', dayKey(-20), { E101: { status: 'leave' } }),
+    );
+    // A manager sees the other team's sheets too (for lent staff).
+    await assertSucceeds(report(sita, dayKey(-6), dayKey()));
+
+    // 6. The CEO changes settings the way the Settings screen does.
+    await assertSucceeds(
+      updateDoc(at(owner), {
+        name: 'Shree Garments',
+        settings: { ...settings, lateAfter: '10:00', managerEditDays: 3 },
+      }),
+    );
+    // Now day -5 is outside Ravi's window.
+    await assertFails(saveDay(ravi, 'm-ravi', 'cut', dayKey(-5), {}));
+    await assertSucceeds(
+      saveDay(ravi, 'm-ravi', 'cut', dayKey(-1), { E101: present('09:30', '18:30', 540) }),
+    );
+
+    // 7. Ravi leaves: the CEO deactivates him and gives Cutting to Sita.
+    await assertSucceeds(
+      updateDoc(doc(owner, 'users', 'm-ravi'), { name: 'ravi', teamIds: [], active: false }),
+    );
+    await assertSucceeds(
+      updateDoc(doc(owner, 'users', 'm-sita'), {
+        name: 'sita',
+        teamIds: ['sew', 'cut'],
+        active: true,
+      }),
+    );
+    await assertFails(saveDay(ravi, 'm-ravi', 'cut', dayKey(), {}));
+    await assertFails(report(ravi, dayKey(-6), dayKey()));
+    await assertSucceeds(
+      saveDay(sita, 'm-sita', 'cut', dayKey(), { E101: present('09:30', '18:30', 540) }),
+    );
+    // His past sheets stay, for the monthly report.
+    await assertFails(deleteDoc(at(owner, 'attendance', `cut_${dayKey(-6)}`)));
+
+    // 8. Another firm sees none of it.
+    const rival = as('rival');
+    await assertSucceeds(
+      signUpBatch(rival, 'rival', 'firm2', { code: 'RVWX56' }).commit(),
+    );
+    await assertFails(report(rival, dayKey(-6), dayKey()));
+    await assertFails(getDocs(collection(rival, 'companies', firm, 'employees')));
+    await assertFails(getDoc(doc(rival, 'users', 'm-sita')));
+    await assertFails(
+      setDoc(at(rival, 'teams', 'x'), { name: 'Mine', createdAt: serverTimestamp() }),
+    );
   });
 });
