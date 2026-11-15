@@ -244,7 +244,7 @@ Firebase can only create a login by signing in as it, which would log the CEO ou
 
 ### Phase 8: Testing and release
 - [x] Confirm the timing rules with the firm (what counts as a full day and a half-day, breaks, minimum hours) and update the app to match (see "Pay rule: Dihadi")
-- [ ] Finalise and test the security rules with sample data
+- [x] Finalise and test the security rules with sample data (57 tests in `firestore_tests`; published to the live project)
 - [ ] Create the app signing key and **back it up safely** (it can't be recovered, and without it you can't release updates)
 - [ ] Build the release APK
 - [ ] Share the APK through one trusted channel (e.g. a Google Drive link)
