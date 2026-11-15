@@ -1,0 +1,338 @@
+rules_version = '2';
+
+// Daily Attendance: Firestore security rules (Phase 5: daily attendance).
+//
+// Layout:
+//   users/{uid}                     one profile per login: companyId, role, ...
+//   companies/{companyId}           company name, login code, createdBy,
+//                                   office settings
+//   companyCodes/{code}             code -> companyId; keeps codes unique
+//   companies/{companyId}/teams     team names (who manages a team is on the
+//                                   manager's profile: users/{uid}.teamIds)
+//   companies/{companyId}/employees employees, keyed by Emp ID
+//   companies/{companyId}/rosters   who works in a team each month
+//   companies/{companyId}/attendance one sheet per team per day
+//
+// Firms are kept completely separate: everything a person can touch is
+// checked against the companyId in their own profile.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Helpers -----------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function companyPath(companyId) {
+      return /databases/$(database)/documents/companies/$(companyId);
+    }
+
+    // The caller's own profile. Only call after checking hasProfile().
+    function me() {
+      return get(userPath(request.auth.uid)).data;
+    }
+
+    function hasProfile() {
+      return signedIn() && exists(userPath(request.auth.uid));
+    }
+
+    function isActiveMemberOf(companyId) {
+      return hasProfile()
+        && me().active == true
+        && me().companyId == companyId;
+    }
+
+    function isCeoOf(companyId) {
+      return isActiveMemberOf(companyId) && me().role == 'ceo';
+    }
+
+    // Only call after checking hasProfile() (e.g. via isActiveMemberOf).
+    function isManager() {
+      return me().role == 'manager';
+    }
+
+    // Company login codes: 6 characters with no look-alikes (0/O, 1/I/L).
+    function validCode(value) {
+      return value is string && value.matches('^[A-HJKMNP-Z2-9]{6}$');
+    }
+
+    function validUsername(value) {
+      return value is string && value.matches('^[a-z0-9][a-z0-9._-]{1,29}$');
+    }
+
+    function validName(value) {
+      return value is string && value.size() > 0 && value.size() <= 100;
+    }
+
+    // The hidden login address the app builds from code + username
+    // (lib/core/manager_login.dart).
+    function managerEmail(data) {
+      return data.username + '@' + data.companyCode.lower()
+        + '.login.daily-attendance-b1b1e.firebaseapp.com';
+    }
+
+    function validUserFields(data) {
+      return data.keys().hasOnly(
+               ['companyId', 'companyCode', 'role', 'name', 'email',
+                'username', 'teamIds', 'active', 'createdAt'])
+        && data.companyId is string
+        && data.role in ['ceo', 'manager']
+        && validName(data.name)
+        && data.email is string
+        && data.teamIds is list
+        && data.active is bool;
+    }
+
+    // ---- Users -------------------------------------------------------------
+
+    match /users/{uid} {
+      // Everyone can read their own profile (the app needs it right after
+      // login). A CEO can read the profiles in their company.
+      allow read: if signedIn()
+        && (request.auth.uid == uid || isCeoOf(resource.data.companyId));
+
+      // CEO sign-up: a brand-new login creates its own CEO profile in the
+      // same batch as the company it is creating. The company must not have
+      // existed before this write, and must name this login as its creator.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && validUserFields(request.resource.data)
+        && request.resource.data.role == 'ceo'
+        && request.resource.data.active == true
+        && request.resource.data.teamIds.size() == 0
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.createdAt == request.time
+        && !exists(companyPath(request.resource.data.companyId))
+        && getAfter(companyPath(request.resource.data.companyId))
+             .data.createdBy == uid
+        && request.resource.data.companyCode
+             == getAfter(companyPath(request.resource.data.companyId)).data.code;
+
+      // A CEO adds managers to their own company. Managers log in with
+      // company code + username, so both are required, the code must be
+      // their company's, and the email must be the login address built from
+      // them. (The app makes the login itself first, then this profile.)
+      allow create: if validUserFields(request.resource.data)
+        && request.resource.data.role == 'manager'
+        && request.resource.data.createdAt == request.time
+        && isCeoOf(request.resource.data.companyId)
+        && validUsername(request.resource.data.username)
+        && request.resource.data.companyCode
+             == get(companyPath(request.resource.data.companyId)).data.code
+        && request.resource.data.email == managerEmail(request.resource.data);
+
+      // A CEO edits a manager in their company (name, teams, active). The
+      // company, code, role, email, username and creation time can't change.
+      allow update: if resource.data.role == 'manager'
+        && isCeoOf(resource.data.companyId)
+        && validUserFields(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['name', 'teamIds', 'active']);
+
+      // Never deleted: managers are deactivated instead, so their past
+      // attendance entries keep a valid author.
+      allow delete: if false;
+    }
+
+    // ---- Companies ---------------------------------------------------------
+
+    match /companies/{companyId} {
+      allow read: if isActiveMemberOf(companyId);
+
+      // Created only during CEO sign-up, together with the CEO's profile and
+      // the company's code. Someone who already belongs to a company can't
+      // create another.
+      allow create: if signedIn()
+        && !hasProfile()
+        && request.resource.data.keys().hasOnly(
+             ['name', 'code', 'createdBy', 'createdAt', 'settings'])
+        && validName(request.resource.data.name)
+        && validCode(request.resource.data.code)
+        && getAfter(/databases/$(database)/documents/companyCodes/$(request.resource.data.code))
+             .data.companyId == companyId
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.settings is map
+        && getAfter(userPath(request.auth.uid)).data.companyId == companyId
+        && getAfter(userPath(request.auth.uid)).data.role == 'ceo';
+
+      // The CEO can rename the company and change its settings. The code
+      // never changes: managers' logins are built from it.
+      allow update: if isCeoOf(companyId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['name', 'settings'])
+        && validName(request.resource.data.name)
+        && request.resource.data.settings is map;
+
+      allow delete: if false;
+
+      // Teams: only a name. Everyone in the company can read them (managers
+      // see which teams a colleague works in).
+      match /teams/{teamId} {
+        allow read: if isActiveMemberOf(companyId);
+        allow delete: if isCeoOf(companyId);
+        allow create: if isCeoOf(companyId)
+          && request.resource.data.keys().hasOnly(['name', 'createdAt'])
+          && validName(request.resource.data.name)
+          && request.resource.data.createdAt == request.time;
+        allow update: if isCeoOf(companyId)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name'])
+          && validName(request.resource.data.name);
+      }
+
+      // Employees. The document id is the Emp ID, so Emp IDs are unique in
+      // the company. Which team someone works in is set month by month in
+      // the rosters below, so any active member can see the staff list and
+      // keep the details up to date.
+      match /employees/{empId} {
+        function validEmployee(data) {
+          return data.keys().hasOnly(
+                   ['empId', 'name', 'designation', 'active', 'createdAt'])
+            && data.empId == empId
+            && validName(data.name)
+            && data.designation is string
+            && data.designation.size() <= 100
+            && data.active is bool;
+        }
+
+        allow read: if isActiveMemberOf(companyId);
+
+        allow create: if isActiveMemberOf(companyId)
+          && validEmployee(request.resource.data)
+          && request.resource.data.empId.matches('^[A-Z0-9][A-Z0-9-]{0,19}$')
+          && request.resource.data.active == true
+          && request.resource.data.createdAt == request.time;
+
+        allow update: if isActiveMemberOf(companyId)
+          && validEmployee(request.resource.data)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'designation', 'active']);
+
+        // Never deleted: people who leave are deactivated, so their past
+        // attendance keeps a name.
+        allow delete: if false;
+      }
+
+      // Rosters: who works in a team for a month (rosters/{teamId}_{yyyy-MM}).
+      // A month without one uses the latest earlier month's list. Managers
+      // change only their own teams' lists, and only around this month (one
+      // month either side, which also covers the time-zone gap at month
+      // ends); older lists are the CEO's to correct.
+      match /rosters/{rosterId} {
+        function monthNumber(month) {
+          return int(month.split('-')[0]) * 12 + int(month.split('-')[1]);
+        }
+
+        function validRoster(data) {
+          return data.keys().hasOnly(['teamId', 'month', 'empIds', 'updatedAt'])
+            && data.teamId is string
+            && data.month is string
+            && data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+            && rosterId == data.teamId + '_' + data.month
+            && data.empIds is list
+            && data.empIds.size() <= 500
+            && data.updatedAt == request.time
+            && exists(/databases/$(database)/documents/companies/$(companyId)/teams/$(data.teamId));
+        }
+
+        function managerMayEdit(data) {
+          return isActiveMemberOf(companyId)
+            && isManager()
+            && data.teamId in me().teamIds
+            && monthNumber(data.month)
+                 >= request.time.year() * 12 + request.time.month() - 1
+            && monthNumber(data.month)
+                 <= request.time.year() * 12 + request.time.month() + 1;
+        }
+
+        allow read: if isActiveMemberOf(companyId);
+        allow create, update: if validRoster(request.resource.data)
+          && (isCeoOf(companyId) || managerMayEdit(request.resource.data));
+        allow delete: if false;
+      }
+
+      // Attendance: one sheet per team per day
+      // (attendance/{teamId}_{yyyy-MM-dd}), with an entry per employee.
+      // Every member can read all sheets: a manager needs the other teams'
+      // sheets to see who was lent to them for the day. Managers save only
+      // their own teams' sheets, for today and the company's edit window
+      // before it; older days are the CEO's to correct.
+      match /attendance/{sheetId} {
+        function dayOf(date) {
+          return timestamp.date(
+            int(date.split('-')[0]),
+            int(date.split('-')[1]),
+            int(date.split('-')[2]));
+        }
+
+        function validSheet(data) {
+          return data.keys().hasOnly(
+                   ['teamId', 'date', 'entries', 'markedBy', 'updatedAt'])
+            && data.teamId is string
+            && data.date is string
+            && data.date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+            && sheetId == data.teamId + '_' + data.date
+            && data.entries is map
+            && data.entries.size() <= 600
+            && data.markedBy == request.auth.uid
+            && data.updatedAt == request.time
+            && exists(/databases/$(database)/documents/companies/$(companyId)/teams/$(data.teamId));
+        }
+
+        // The dates are the phone's local dates, so a day either side is
+        // allowed for the time-zone gap.
+        function managerMayEdit(data) {
+          return isActiveMemberOf(companyId)
+            && isManager()
+            && data.teamId in me().teamIds
+            && dayOf(data.date) <= request.time + duration.value(1, 'd')
+            && dayOf(data.date) >= request.time - duration.value(
+                 get(companyPath(companyId)).data.settings.managerEditDays + 1,
+                 'd');
+        }
+
+        allow read: if isActiveMemberOf(companyId);
+        allow create, update: if validSheet(request.resource.data)
+          && (isCeoOf(companyId) || managerMayEdit(request.resource.data));
+        // Kept for the monthly report; a sheet is corrected, not deleted.
+        allow delete: if false;
+      }
+
+      // Anything else under a company: only the CEO. The collections above
+      // are left out here, or this would bypass their checks (rules that
+      // match the same document are combined with OR). {subcollection}
+      // makes sure this never matches the company document itself
+      // ({document=**} alone also matches zero path segments).
+      match /{subcollection}/{document=**} {
+        allow read, write:
+          if !(subcollection in ['teams', 'employees', 'rosters', 'attendance'])
+          && isCeoOf(companyId);
+      }
+    }
+
+    // ---- Company codes -----------------------------------------------------
+
+    // Claimed once, during CEO sign-up, for the company being created in the
+    // same batch. A taken code can't be overwritten (that would be an update),
+    // so codes stay unique. Nobody reads these: managers' logins are built
+    // from the code itself.
+    match /companyCodes/{code} {
+      allow create: if signedIn()
+        && validCode(code)
+        && request.resource.data.keys().hasOnly(['companyId'])
+        && !exists(companyPath(request.resource.data.companyId))
+        && getAfter(companyPath(request.resource.data.companyId)).data.code
+             == code
+        && getAfter(companyPath(request.resource.data.companyId)).data.createdBy
+             == request.auth.uid;
+    }
+
+    // Anything not matched above is denied.
+  }
+}
