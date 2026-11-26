@@ -1,7 +1,11 @@
 /// What a signed-in person is allowed to do.
 enum UserRole {
   director,
-  manager;
+  supervisor,
+
+  /// Sees what the director sees (dashboard, teams, reports, Excel), but
+  /// can't change anything.
+  accountant;
 
   static UserRole? tryParse(Object? value) {
     for (final role in values) {
@@ -11,13 +15,13 @@ enum UserRole {
   }
 }
 
-/// A director or manager, as stored in `users/{phone}`.
+/// A director, supervisor or accountant, as stored in `users/{phone}`.
 ///
 /// The document is keyed by the person's mobile number (E.164, see
 /// `PhoneNumber`), the same number Firebase puts in their login. So after
 /// logging in the app can read it directly to find out which company the
 /// person belongs to and what their role is, and a director can add a
-/// manager before the manager has ever logged in.
+/// supervisor before the supervisor has ever logged in.
 class AppUser {
   const AppUser({
     required this.phone,
@@ -34,7 +38,7 @@ class AppUser {
   final UserRole role;
   final String name;
 
-  /// Teams a manager looks after. Empty for a director, who sees every team.
+  /// Teams a supervisor looks after. Empty for a director, who sees every team.
   final List<String> teamIds;
 
   /// Deactivated users can still sign in to Firebase but are kept out of the

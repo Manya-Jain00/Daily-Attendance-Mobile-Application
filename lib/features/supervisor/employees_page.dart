@@ -15,7 +15,7 @@ import 'pick_employee_page.dart';
 /// the month before, so only the people who changed are added or removed.
 /// The daily attendance sheet lists these people.
 ///
-/// A manager sees their own teams and puts people already in the company on
+/// A supervisor sees their own teams and puts people already in the company on
 /// or off their lists. The director sees every team, and is the only one who
 /// adds new employees, changes their details or deactivates them.
 class EmployeesPage extends StatefulWidget {
@@ -59,7 +59,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
   }
 
   Future<void> _add(_View view) async {
-    // Managers can only put existing staff on their list.
+    // Supervisors can only put existing staff on their list.
     final choice = !_isDirector
         ? _AddChoice.fromAnotherTeam
         : await showModalBottomSheet<_AddChoice>(

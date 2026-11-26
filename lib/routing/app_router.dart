@@ -6,8 +6,9 @@ import '../features/auth/auth_service.dart';
 import '../features/auth/company_setup_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/splash_screen.dart';
+import '../features/accountant/accountant_home_screen.dart';
 import '../features/director/director_home_screen.dart';
-import '../features/manager/manager_home_screen.dart';
+import '../features/supervisor/supervisor_home_screen.dart';
 
 abstract final class AppRoutes {
   static const splash = '/';
@@ -15,11 +16,13 @@ abstract final class AppRoutes {
   static const companySetup = '/company-setup';
   static const accountProblem = '/account-problem';
   static const director = '/director';
-  static const manager = '/manager';
+  static const supervisor = '/supervisor';
+  static const accountant = '/accountant';
 
   static String homeFor(UserRole role) => switch (role) {
     UserRole.director => director,
-    UserRole.manager => manager,
+    UserRole.supervisor => supervisor,
+    UserRole.accountant => accountant,
   };
 }
 
@@ -52,8 +55,12 @@ GoRouter createAppRouter(AuthService auth) => GoRouter(
       builder: (context, state) => const DirectorHomeScreen(),
     ),
     GoRoute(
-      path: AppRoutes.manager,
-      builder: (context, state) => const ManagerHomeScreen(),
+      path: AppRoutes.supervisor,
+      builder: (context, state) => const SupervisorHomeScreen(),
+    ),
+    GoRoute(
+      path: AppRoutes.accountant,
+      builder: (context, state) => const AccountantHomeScreen(),
     ),
   ],
 );

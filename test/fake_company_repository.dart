@@ -11,7 +11,8 @@ class FakeCompanyRepository implements CompanyRepository {
     settings: CompanySettings.defaults,
   );
   final teams = <Team>[];
-  final managers = <AppUser>[];
+  final supervisors = <AppUser>[];
+  final accountants = <AppUser>[];
 
   /// Employees per team id; a team with any can't be deleted.
   final employeeCounts = <String, int>{};
@@ -36,8 +37,12 @@ class FakeCompanyRepository implements CompanyRepository {
       _watch(() => [...teams]..sort((a, b) => a.name.compareTo(b.name)));
 
   @override
-  Stream<List<AppUser>> watchManagers() =>
-      _watch(() => [...managers]..sort((a, b) => a.name.compareTo(b.name)));
+  Stream<List<AppUser>> watchSupervisors() =>
+      _watch(() => [...supervisors]..sort((a, b) => a.name.compareTo(b.name)));
+
+  @override
+  Stream<List<AppUser>> watchAccountants() =>
+      _watch(() => [...accountants]..sort((a, b) => a.name.compareTo(b.name)));
 
   @override
   Future<void> addTeam(String name) async {
@@ -60,10 +65,10 @@ class FakeCompanyRepository implements CompanyRepository {
       );
     }
     teams.removeWhere((t) => t.id == teamId);
-    for (var i = 0; i < managers.length; i++) {
-      final m = managers[i];
+    for (var i = 0; i < supervisors.length; i++) {
+      final m = supervisors[i];
       if (m.teamIds.contains(teamId)) {
-        managers[i] = _copy(
+        supervisors[i] = _copy(
           m,
           teamIds: m.teamIds.where((id) => id != teamId).toList(),
         );
@@ -73,19 +78,19 @@ class FakeCompanyRepository implements CompanyRepository {
   }
 
   @override
-  Future<void> addManager({
+  Future<void> addSupervisor({
     required String name,
     required String phone,
     required List<String> teamIds,
   }) async {
-    if (managers.any((m) => m.phone == phone)) {
+    if ([...supervisors, ...accountants].any((m) => m.phone == phone)) {
       throw const DataFailure('This number is already used in the app.');
     }
-    managers.add(
+    supervisors.add(
       AppUser(
         phone: phone,
         companyId: 'company-1',
-        role: UserRole.manager,
+        role: UserRole.supervisor,
         name: name.trim(),
         teamIds: teamIds,
       ),
@@ -94,19 +99,49 @@ class FakeCompanyRepository implements CompanyRepository {
   }
 
   @override
-  Future<void> updateManager(
+  Future<void> updateSupervisor(
     String phone, {
     required String name,
     required List<String> teamIds,
     required bool active,
   }) async {
-    final i = managers.indexWhere((m) => m.phone == phone);
-    managers[i] = _copy(
-      managers[i],
+    final i = supervisors.indexWhere((m) => m.phone == phone);
+    supervisors[i] = _copy(
+      supervisors[i],
       name: name.trim(),
       teamIds: teamIds,
       active: active,
     );
+    _changed();
+  }
+
+  @override
+  Future<void> addAccountant({
+    required String name,
+    required String phone,
+  }) async {
+    if ([...supervisors, ...accountants].any((m) => m.phone == phone)) {
+      throw const DataFailure('This number is already used in the app.');
+    }
+    accountants.add(
+      AppUser(
+        phone: phone,
+        companyId: 'company-1',
+        role: UserRole.accountant,
+        name: name.trim(),
+      ),
+    );
+    _changed();
+  }
+
+  @override
+  Future<void> updateAccountant(
+    String phone, {
+    required String name,
+    required bool active,
+  }) async {
+    final i = accountants.indexWhere((m) => m.phone == phone);
+    accountants[i] = _copy(accountants[i], name: name.trim(), active: active);
     _changed();
   }
 

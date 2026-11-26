@@ -7,7 +7,8 @@ import '../models/roster.dart';
 import 'company_repository.dart';
 import 'firestore_helpers.dart';
 
-/// [CompanyRepository] backed by Firestore, for the company of [director].
+/// [CompanyRepository] backed by Firestore, for the company of [director]
+/// (or of an accountant, who only reads it).
 class FirestoreCompanyRepository implements CompanyRepository {
   FirestoreCompanyRepository(this.director, {FirebaseFirestore? firestore})
     : _db = firestore ?? FirebaseFirestore.instance;
@@ -44,9 +45,14 @@ class FirestoreCompanyRepository implements CompanyRepository {
   );
 
   @override
-  Stream<List<AppUser>> watchManagers() => friendlyErrors(
+  Stream<List<AppUser>> watchSupervisors() => _watchRole(UserRole.supervisor);
+
+  @override
+  Stream<List<AppUser>> watchAccountants() => _watchRole(UserRole.accountant);
+
+  Stream<List<AppUser>> _watchRole(UserRole role) => friendlyErrors(
     _companyUsers
-        .where('role', isEqualTo: UserRole.manager.name)
+        .where('role', isEqualTo: role.name)
         .snapshots()
         .map(
           (q) =>
@@ -87,7 +93,7 @@ class FirestoreCompanyRepository implements CompanyRepository {
     if (current.empIds.isNotEmpty) {
       throw DataFailure(
         'This team still has employees on its list for ${month.label}. Its '
-        'manager must take them off the list first.',
+        'supervisor must take them off the list first.',
       );
     }
     // Filtered here rather than in the query so no extra index is needed.
@@ -96,7 +102,7 @@ class FirestoreCompanyRepository implements CompanyRepository {
     for (final person in people.docs) {
       final data = person.data();
       final teamIds = data['teamIds'];
-      if (data['role'] == UserRole.manager.name &&
+      if (data['role'] == UserRole.supervisor.name &&
           teamIds is List &&
           teamIds.contains(teamId)) {
         batch.update(person.reference, {
@@ -107,19 +113,30 @@ class FirestoreCompanyRepository implements CompanyRepository {
     await batch.commit();
   });
 
-  /// The profile is keyed by the number, so it's ready before the manager
+  /// The profile is keyed by the number, so it's ready before the supervisor
   /// ever logs in. The rules refuse a number that's already in the app (that
   /// would be an update of someone else's profile).
   @override
-  Future<void> addManager({
+  Future<void> addSupervisor({
     required String name,
     required String phone,
     required List<String> teamIds,
-  }) async {
+  }) => _addPerson(UserRole.supervisor, name, phone, teamIds);
+
+  @override
+  Future<void> addAccountant({required String name, required String phone}) =>
+      _addPerson(UserRole.accountant, name, phone, const []);
+
+  Future<void> _addPerson(
+    UserRole role,
+    String name,
+    String phone,
+    List<String> teamIds,
+  ) async {
     try {
       await _users.doc(phone).set({
         'companyId': director.companyId,
-        'role': UserRole.manager.name,
+        'role': role.name,
         'name': name.trim(),
         'phone': phone,
         'teamIds': teamIds,
@@ -138,7 +155,7 @@ class FirestoreCompanyRepository implements CompanyRepository {
   }
 
   @override
-  Future<void> updateManager(
+  Future<void> updateSupervisor(
     String phone, {
     required String name,
     required List<String> teamIds,
@@ -149,6 +166,15 @@ class FirestoreCompanyRepository implements CompanyRepository {
       'teamIds': teamIds,
       'active': active,
     }),
+  );
+
+  @override
+  Future<void> updateAccountant(
+    String phone, {
+    required String name,
+    required bool active,
+  }) => guardFirestore(
+    () => _users.doc(phone).update({'name': name.trim(), 'active': active}),
   );
 
   @override

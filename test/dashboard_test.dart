@@ -227,4 +227,97 @@ void main() {
       expect(find.text('Search by name or Emp ID'), findsOneWidget);
     });
   });
+
+  group('the accountant', () {
+    Future<void> start(WidgetTester tester) async {
+      tester.view
+        ..physicalSize = const Size(360, 1400)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      repo
+        ..isDirector = false
+        ..isAccountant = true;
+      final company = FakeCompanyRepository();
+      company.teams.addAll(repo.teams);
+      await tester.pumpWidget(
+        DailyAttendanceApp(
+          auth: FakeAuthService(initial: const SignedIn(accountantUser)),
+          openCompany: (_) => company,
+          openEmployees: (_) => repo,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> tap(WidgetTester tester, Finder finder) async {
+      await tester.ensureVisible(finder);
+      await tester.tap(finder);
+      await tester.pumpAndSettle();
+    }
+
+    Finder tab(String label) => find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.text(label),
+    );
+
+    testWidgets("has the director's Dashboard, Teams and Reports only", (
+      tester,
+    ) async {
+      await start(tester);
+      expect(tab('Dashboard'), findsOneWidget);
+      expect(tab('Teams'), findsOneWidget);
+      expect(tab('Reports'), findsOneWidget);
+      expect(tab('Employees'), findsNothing);
+      expect(tab('People'), findsNothing);
+      expect(tab('Settings'), findsNothing);
+
+      // Teams are listed, with nothing to add, rename or delete.
+      await tap(tester, tab('Teams'));
+      expect(find.text('Add team'), findsNothing);
+      expect(find.byTooltip('Options for Sales'), findsNothing);
+    });
+
+    testWidgets('sees any team sheet, view only, with nothing to save', (
+      tester,
+    ) async {
+      repo.sheets.add(
+        AttendanceSheet(
+          teamId: 'team-1',
+          date: today,
+          entries: {'E1': present('10:00')},
+        ),
+      );
+      await start(tester);
+
+      await tap(tester, find.text('Sales'));
+      expect(find.text('Asha'), findsOneWidget);
+      expect(find.text('View only.'), findsOneWidget);
+      expect(find.text('Mark the rest present'), findsNothing);
+      expect(find.text('Add someone from another team'), findsNothing);
+
+      // The status buttons are there to read, but can't be pressed, so no
+      // Save bar ever appears.
+      final absentButton = find.widgetWithText(OutlinedButton, 'Absent');
+      expect(absentButton, findsWidgets);
+      expect(
+        tester.widget<OutlinedButton>(absentButton.first).onPressed,
+        isNull,
+      );
+      await tester.tap(absentButton.first, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(FilledButton, 'Save'), findsNothing);
+      expect(repo.savedSheet('team-1', today)!.entries.keys, {'E1'});
+    });
+
+    testWidgets('opens employee history and the reports', (tester) async {
+      await start(tester);
+      await tap(tester, find.text('Employee history'));
+      expect(find.text('Search by name or Emp ID'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      await tap(tester, tab('Reports'));
+      expect(find.text('Share as Excel file'), findsOneWidget);
+    });
+  });
 }

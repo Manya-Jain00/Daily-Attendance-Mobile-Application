@@ -5,7 +5,7 @@ import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
 import 'employees_page.dart' show initialOf;
 
-/// Manager: pick someone from another team who works in this team for just
+/// Supervisor: pick someone from another team who works in this team for just
 /// one day. They go on that day's sheet only, not on the monthly list, and
 /// show as absent on their own team's sheet. Pops the chosen [Employee].
 class PickGuestPage extends StatefulWidget {

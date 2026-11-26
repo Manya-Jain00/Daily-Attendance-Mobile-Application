@@ -5,9 +5,9 @@ import '../../core/data/employee_repository.dart';
 import '../../shared/widgets/role_shell.dart';
 import '../auth/auth_scope.dart';
 import '../auth/auth_service.dart';
-import '../manager/employees_page.dart';
+import '../supervisor/employees_page.dart';
 import 'dashboard_page.dart';
-import 'managers_page.dart';
+import 'people_page.dart';
 import 'reports_page.dart';
 import 'settings_page.dart';
 import 'teams_page.dart';
@@ -22,7 +22,7 @@ class DirectorHomeScreen extends StatefulWidget {
 class _DirectorHomeScreenState extends State<DirectorHomeScreen> {
   CompanyRepository? _repository;
 
-  /// The same attendance data managers use, opened for the director, so the
+  /// The same attendance data supervisors use, opened for the director, so the
   /// dashboard sees and corrects every team.
   EmployeeRepository? _attendance;
   String? _openedFor;
@@ -73,10 +73,10 @@ class _DirectorHomeScreenState extends State<DirectorHomeScreen> {
           ),
         ),
         ShellTab(
-          label: 'Managers',
+          label: 'People',
           icon: Icons.badge_outlined,
           selectedIcon: Icons.badge,
-          page: ManagersPage(repository: repository),
+          page: PeoplePage(repository: repository),
         ),
         ShellTab(
           label: 'Reports',

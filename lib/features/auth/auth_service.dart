@@ -17,7 +17,7 @@ class SignedOut extends Session {
 }
 
 /// Logged in with a phone number that isn't in any company yet: either a
-/// director setting up a new company, or a manager whose director hasn't
+/// director setting up a new company, or a supervisor whose director hasn't
 /// added this number.
 class NeedsCompany extends Session {
   const NeedsCompany(this.phone);

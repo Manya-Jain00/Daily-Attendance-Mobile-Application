@@ -3,7 +3,7 @@
 /// Numbers are stored in international (E.164) form, e.g. `+919876543210`,
 /// which is also what Firebase puts in the login token. A person's profile is
 /// kept under that number (`users/{phone}`), so the director can add a
-/// manager before the manager has ever logged in.
+/// supervisor before the supervisor has ever logged in.
 abstract final class PhoneNumber {
   /// Used when someone types a number without a country code.
   static const defaultCountryCode = '+91';

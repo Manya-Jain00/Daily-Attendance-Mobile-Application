@@ -8,7 +8,7 @@ import '../../shared/widgets/load_state.dart';
 import '../auth/form_validators.dart';
 
 /// Director: the company name and office rules (office hours, late time, half-day
-/// rule, manager edit window).
+/// rule, supervisor edit window).
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.repository});
 
@@ -213,25 +213,25 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1),
                 _StepperTile(
                   icon: Icons.edit_calendar_outlined,
-                  title: 'Manager edit window',
-                  subtitle: 'Managers can correct this many past days',
-                  value: '${draft.managerEditDays} d',
+                  title: 'Supervisor edit window',
+                  subtitle: 'Supervisors can correct this many past days',
+                  value: '${draft.supervisorEditDays} d',
                   semanticsLabel: 'edit window days',
-                  onMinus: _busy || draft.managerEditDays <= 0
+                  onMinus: _busy || draft.supervisorEditDays <= 0
                       ? null
                       : () => _edit(
                           (s) => s.copyWith(
-                            managerEditDays: s.managerEditDays - 1,
+                            supervisorEditDays: s.supervisorEditDays - 1,
                           ),
                         ),
                   onPlus:
                       _busy ||
-                          draft.managerEditDays >=
-                              CompanySettings.maxManagerEditDays
+                          draft.supervisorEditDays >=
+                              CompanySettings.maxSupervisorEditDays
                       ? null
                       : () => _edit(
                           (s) => s.copyWith(
-                            managerEditDays: s.managerEditDays + 1,
+                            supervisorEditDays: s.supervisorEditDays + 1,
                           ),
                         ),
                 ),

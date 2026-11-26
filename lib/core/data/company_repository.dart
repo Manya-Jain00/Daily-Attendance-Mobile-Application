@@ -4,7 +4,7 @@ import '../models/app_user.dart';
 import '../models/company.dart';
 
 /// Everything the director's setup screens read and change in their own company:
-/// the company itself, its teams and its managers.
+/// the company itself, its teams and its supervisors.
 ///
 /// Streams update live. Methods throw [DataFailure] with a message that can
 /// be shown as is.
@@ -14,32 +14,47 @@ abstract class CompanyRepository {
   /// Sorted by name.
   Stream<List<Team>> watchTeams();
 
-  /// Active and inactive managers, sorted by name.
-  Stream<List<AppUser>> watchManagers();
+  /// Active and inactive supervisors, sorted by name.
+  Stream<List<AppUser>> watchSupervisors();
+
+  /// Active and inactive accountants, sorted by name.
+  Stream<List<AppUser>> watchAccountants();
 
   Future<void> addTeam(String name);
 
   Future<void> renameTeam(String teamId, String name);
 
-  /// Also takes the team off every manager who had it. Refused while the team
+  /// Also takes the team off every supervisor who had it. Refused while the team
   /// still has employees.
   Future<void> deleteTeam(String teamId);
 
-  /// Adds a manager by their mobile number ([phone], E.164). They can log in
+  /// Adds a supervisor by their mobile number ([phone], E.164). They can log in
   /// with it straight away, using a code sent by SMS. Refused if the number
   /// is already in the app, in this company or another.
-  Future<void> addManager({
+  Future<void> addSupervisor({
     required String name,
     required String phone,
     required List<String> teamIds,
   });
 
-  /// Changes a manager's name, teams or active state. The number can't
+  /// Changes a supervisor's name, teams or active state. The number can't
   /// change, because it's their login; add them again with the new number.
-  Future<void> updateManager(
+  Future<void> updateSupervisor(
     String phone, {
     required String name,
     required List<String> teamIds,
+    required bool active,
+  });
+
+  /// Adds an accountant by their mobile number ([phone], E.164), the same way
+  /// as [addSupervisor]. Accountants have no teams: they see every team, and
+  /// can't change anything.
+  Future<void> addAccountant({required String name, required String phone});
+
+  /// Changes an accountant's name or active state.
+  Future<void> updateAccountant(
+    String phone, {
+    required String name,
     required bool active,
   });
 
@@ -57,8 +72,9 @@ class DataFailure implements Exception {
   String toString() => message;
 }
 
-/// Opens the [CompanyRepository] for a signed-in director.
-typedef CompanyRepositoryFactory = CompanyRepository Function(AppUser director);
+/// Opens the [CompanyRepository] for a signed-in director (or an accountant,
+/// who only reads it).
+typedef CompanyRepositoryFactory = CompanyRepository Function(AppUser user);
 
 /// Makes the [CompanyRepositoryFactory] available to every screen, so tests
 /// can swap Firestore for an in-memory fake.

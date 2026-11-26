@@ -14,7 +14,7 @@ import 'fake_employee_repository.dart';
 void main() {
   late FakeEmployeeRepository repo;
 
-  /// Opens the Employees tab as the manager, or as the director (who sees
+  /// Opens the Employees tab as the supervisor, or as the director (who sees
   /// every team and is the only one who adds or changes employees).
   Future<void> openEmployees(
     WidgetTester tester, {
@@ -28,7 +28,7 @@ void main() {
     await tester.pumpWidget(
       DailyAttendanceApp(
         auth: FakeAuthService(
-          initial: SignedIn(asDirector ? directorUser : managerUser),
+          initial: SignedIn(asDirector ? directorUser : supervisorUser),
         ),
         openCompany: (_) => FakeCompanyRepository(),
         openEmployees: (_) => repo,
@@ -66,7 +66,7 @@ void main() {
 
   final thisMonth = Month.now();
 
-  /// Two of the manager's own teams, plus one they don't look after.
+  /// Two of the supervisor's own teams, plus one they don't look after.
   void seedTeams() {
     repo.teams
       ..add(const Team(id: 'team-1', name: 'Sales'))
@@ -86,7 +86,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a manager without teams is told to ask the director', (
+  testWidgets('a supervisor without teams is told to ask the director', (
     tester,
   ) async {
     repo.teams.add(const Team(id: 'team-9', name: 'Legal'));
@@ -173,7 +173,7 @@ void main() {
     expect(repo.employees, hasLength(1));
   });
 
-  testWidgets('the manager puts someone from another team on their list', (
+  testWidgets('the supervisor puts someone from another team on their list', (
     tester,
   ) async {
     seedTeams();
@@ -186,7 +186,7 @@ void main() {
     onList('team-2', thisMonth, ['A1']);
     await openEmployees(tester);
 
-    // Accounts (first by name) is on screen. A manager can't add someone
+    // Accounts (first by name) is on screen. A supervisor can't add someone
     // new, so Add goes straight to the staff list.
     await tapButton(tester, 'Add to team');
     expect(find.text('New employee'), findsNothing);
@@ -224,7 +224,7 @@ void main() {
     onList('team-2', thisMonth, ['A1']);
     await openEmployees(tester);
 
-    // Only the manager's own teams; sorted by name, so Accounts is first.
+    // Only the supervisor's own teams; sorted by name, so Accounts is first.
     expect(find.byType(ChoiceChip), findsNWidgets(2));
     expect(find.text('Bilal'), findsOneWidget);
     expect(find.text('Asha'), findsNothing);
@@ -289,7 +289,9 @@ void main() {
     expect(next.onPressed, isNull);
   });
 
-  testWidgets("a manager can't change an employee's details", (tester) async {
+  testWidgets("a supervisor can't change an employee's details", (
+    tester,
+  ) async {
     seedTeams();
     repo.employees.add(
       const Employee(empId: 'A1', name: 'Bilal', designation: 'Clerk'),
@@ -310,7 +312,7 @@ void main() {
       ),
     );
     expect(name.readOnly, isTrue);
-    // Moving them off the team is still the manager's to do.
+    // Moving them off the team is still the supervisor's to do.
     expect(find.text('Take off Accounts list'), findsOneWidget);
   });
 

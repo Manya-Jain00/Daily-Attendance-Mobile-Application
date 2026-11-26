@@ -13,7 +13,7 @@ import 'employees_page.dart';
 /// designation), or edits one (name, designation, active). The Emp ID can't
 /// be changed later.
 ///
-/// A manager only views an employee's details here, and can take them off
+/// A supervisor only views an employee's details here, and can take them off
 /// their team's list.
 class EmployeeFormPage extends StatefulWidget {
   const EmployeeFormPage({

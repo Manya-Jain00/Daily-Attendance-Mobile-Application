@@ -11,7 +11,7 @@ class FakeAuthService extends AuthService {
   /// Number -> profile. A number not in here logs in to [NeedsCompany].
   final profiles = <String, AppUser>{
     directorUser.phone: directorUser,
-    managerUser.phone: managerUser,
+    supervisorUser.phone: supervisorUser,
   };
 
   /// Every number a code was sent to, in order.
@@ -72,10 +72,17 @@ const directorUser = AppUser(
   name: 'Test director',
 );
 
-const managerUser = AppUser(
+const supervisorUser = AppUser(
   phone: '+919000000011',
   companyId: 'company-1',
-  role: UserRole.manager,
-  name: 'Test Manager',
+  role: UserRole.supervisor,
+  name: 'Test Supervisor',
   teamIds: ['team-1'],
+);
+
+const accountantUser = AppUser(
+  phone: '+919000000021',
+  companyId: 'company-1',
+  role: UserRole.accountant,
+  name: 'Test Accountant',
 );

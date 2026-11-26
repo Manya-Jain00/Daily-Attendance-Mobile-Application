@@ -6,11 +6,13 @@ import '../../core/models/company.dart';
 import '../../shared/widgets/load_state.dart';
 import '../auth/form_validators.dart';
 
-/// Director: create, rename and delete teams, and see who manages each one.
+/// Director: create, rename and delete teams, and see who supervises each one.
+/// With [readOnly] (the accountant's) the teams are only listed.
 class TeamsPage extends StatefulWidget {
-  const TeamsPage({super.key, required this.repository});
+  const TeamsPage({super.key, required this.repository, this.readOnly = false});
 
   final CompanyRepository repository;
+  final bool readOnly;
 
   @override
   State<TeamsPage> createState() => _TeamsPageState();
@@ -20,7 +22,7 @@ enum _TeamAction { rename, delete }
 
 class _TeamsPageState extends State<TeamsPage> {
   late final _teams = widget.repository.watchTeams();
-  late final _managers = widget.repository.watchManagers();
+  late final _supervisors = widget.repository.watchSupervisors();
 
   Future<void> _add(List<Team> teams) async {
     final name = await showDialog<String>(
@@ -43,8 +45,8 @@ class _TeamsPageState extends State<TeamsPage> {
     );
   }
 
-  Future<void> _delete(Team team, List<AppUser> managers) async {
-    final managerCount = managers
+  Future<void> _delete(Team team, List<AppUser> supervisors) async {
+    final supervisorCount = supervisors
         .where((m) => m.teamIds.contains(team.id))
         .length;
     final sure = await showDialog<bool>(
@@ -52,9 +54,9 @@ class _TeamsPageState extends State<TeamsPage> {
       builder: (context) => AlertDialog(
         title: Text('Delete "${team.name}"?'),
         content: Text(
-          managerCount == 0
+          supervisorCount == 0
               ? 'This cannot be undone.'
-              : 'Its ${managerCount == 1 ? 'manager' : '$managerCount managers'} '
+              : 'Its ${supervisorCount == 1 ? 'supervisor' : '$supervisorCount supervisors'} '
                     'will no longer be assigned to it. This cannot be undone.',
         ),
         actions: [
@@ -94,12 +96,12 @@ class _TeamsPageState extends State<TeamsPage> {
     return StreamBuilder<List<Team>>(
       stream: _teams,
       builder: (context, teamsSnap) => StreamBuilder<List<AppUser>>(
-        stream: _managers,
-        builder: (context, managersSnap) {
+        stream: _supervisors,
+        builder: (context, supervisorsSnap) {
           final teams = teamsSnap.data;
           return Scaffold(
             backgroundColor: Colors.transparent,
-            floatingActionButton: teams == null
+            floatingActionButton: teams == null || widget.readOnly
                 ? null
                 : FloatingActionButton.extended(
                     heroTag: null,
@@ -108,22 +110,23 @@ class _TeamsPageState extends State<TeamsPage> {
                     label: const Text('Add team'),
                   ),
             body:
-                loadStateFor([teamsSnap, managersSnap]) ??
-                _buildList(teams!, managersSnap.data!),
+                loadStateFor([teamsSnap, supervisorsSnap]) ??
+                _buildList(teams!, supervisorsSnap.data!),
           );
         },
       ),
     );
   }
 
-  Widget _buildList(List<Team> teams, List<AppUser> managers) {
+  Widget _buildList(List<Team> teams, List<AppUser> supervisors) {
     if (teams.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.groups_outlined,
         title: 'No teams yet',
-        message:
-            'Add your teams, such as Marketing, Finance or Legal. Then add '
-            'managers and assign them to teams.',
+        message: widget.readOnly
+            ? 'The director has not added any teams yet.'
+            : 'Add your teams, such as Marketing, Finance or Legal. Then add '
+                  'supervisors and assign them to teams.',
       );
     }
     final theme = Theme.of(context);
@@ -134,7 +137,7 @@ class _TeamsPageState extends State<TeamsPage> {
       itemBuilder: (context, i) {
         final team = teams[i];
         final names = [
-          for (final m in managers)
+          for (final m in supervisors)
             if (m.active && m.teamIds.contains(team.id)) m.name,
         ];
         return Card(
@@ -148,34 +151,36 @@ class _TeamsPageState extends State<TeamsPage> {
             ),
             title: Text(team.name),
             subtitle: Text(
-              names.isEmpty ? 'No manager yet' : names.join(', '),
+              names.isEmpty ? 'No supervisor yet' : names.join(', '),
               style: names.isEmpty
                   ? TextStyle(color: theme.colorScheme.error)
                   : null,
             ),
-            trailing: PopupMenuButton<_TeamAction>(
-              tooltip: 'Options for ${team.name}',
-              onSelected: (action) => switch (action) {
-                _TeamAction.rename => _rename(team, teams),
-                _TeamAction.delete => _delete(team, managers),
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: _TeamAction.rename,
-                  child: ListTile(
-                    leading: Icon(Icons.edit_outlined),
-                    title: Text('Rename'),
+            trailing: widget.readOnly
+                ? null
+                : PopupMenuButton<_TeamAction>(
+                    tooltip: 'Options for ${team.name}',
+                    onSelected: (action) => switch (action) {
+                      _TeamAction.rename => _rename(team, teams),
+                      _TeamAction.delete => _delete(team, supervisors),
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: _TeamAction.rename,
+                        child: ListTile(
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Rename'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: _TeamAction.delete,
+                        child: ListTile(
+                          leading: Icon(Icons.delete_outline),
+                          title: Text('Delete'),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                PopupMenuItem(
-                  value: _TeamAction.delete,
-                  child: ListTile(
-                    leading: Icon(Icons.delete_outline),
-                    title: Text('Delete'),
-                  ),
-                ),
-              ],
-            ),
           ),
         );
       },

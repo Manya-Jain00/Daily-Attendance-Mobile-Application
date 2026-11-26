@@ -11,20 +11,20 @@ import 'company_repository.dart';
 import 'employee_repository.dart';
 import 'firestore_helpers.dart';
 
-/// [EmployeeRepository] backed by Firestore, for [manager]'s company
-/// ([manager] may also be the director).
+/// [EmployeeRepository] backed by Firestore, for [supervisor]'s company
+/// ([supervisor] may also be the director).
 ///
-/// [manager] is the profile at the time this was opened; open a new one when
-/// the manager's teams change.
+/// [supervisor] is the profile at the time this was opened; open a new one when
+/// the supervisor's teams change.
 class FirestoreEmployeeRepository implements EmployeeRepository {
-  FirestoreEmployeeRepository(this.manager, {FirebaseFirestore? firestore})
+  FirestoreEmployeeRepository(this.supervisor, {FirebaseFirestore? firestore})
     : _db = firestore ?? FirebaseFirestore.instance;
 
-  final AppUser manager;
+  final AppUser supervisor;
   final FirebaseFirestore _db;
 
   DocumentReference<Map<String, dynamic>> get _company =>
-      _db.collection('companies').doc(manager.companyId);
+      _db.collection('companies').doc(supervisor.companyId);
 
   CollectionReference<Map<String, dynamic>> get _employees =>
       _company.collection('employees');
@@ -36,10 +36,13 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
       _company.collection('attendance');
 
   @override
-  List<String> get myTeamIds => manager.teamIds;
+  List<String> get myTeamIds => supervisor.teamIds;
 
   @override
-  bool get isDirector => manager.role == UserRole.director;
+  bool get isDirector => supervisor.role == UserRole.director;
+
+  @override
+  bool get isAccountant => supervisor.role == UserRole.accountant;
 
   @override
   Stream<List<Team>> watchTeams() => friendlyErrors(
@@ -75,7 +78,7 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
   );
 
   /// Checks the Emp ID is free, then adds the employee and puts them on the
-  /// list in one transaction, so two managers can't take the same ID at
+  /// list in one transaction, so two supervisors can't take the same ID at
   /// once.
   @override
   Future<void> addEmployee({
@@ -174,7 +177,7 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
       'teamId': teamId,
       'date': date.key,
       'entries': {for (final e in entries.entries) e.key: e.value.toMap()},
-      'markedBy': manager.phone,
+      'markedBy': supervisor.phone,
       'updatedAt': FieldValue.serverTimestamp(),
     }),
   );

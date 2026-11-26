@@ -1,10 +1,10 @@
 # Daily Attendance App
 
-A mobile app that replaces the paper attendance register in a firm. Managers record each employee's daily attendance and in/out times, and the director sees every team's records and uses the monthly report for salaries.
+A mobile app that replaces the paper attendance register in a firm. Supervisors record each employee's daily attendance and in/out times, and the director sees every team's records and uses the monthly report for salaries.
 
 - **Platform:** Android app, shared directly as an APK (no Play Store needed)
 - **Tech stack:** Flutter (app) + Firebase (login and online database)
-- **Users:** Director / top-level admins and managers. Employees do not log in.
+- **Users:** Director / top-level admins, supervisors and accountants (view only). Employees do not log in.
 
 
 ## Running it yourself
@@ -23,17 +23,18 @@ flutter run
 
 | Role | Can do |
 |---|---|
-| **Director (Super Admin)** | See and edit all teams' attendance, create teams, add managers, **add, edit and deactivate employees** (only the director can), change settings, export monthly reports. Logs in with their **mobile number + SMS code**. |
-| **Manager (Team Admin)** | Put existing employees on or off their teams' monthly lists, and mark daily attendance, for **their own teams only**. Can't add new employees, change their details or deactivate them. One manager can handle **several teams**, and one team can have several managers. Logs in with their **mobile number + SMS code**, the number the director added them with. |
-| **Employee** | No login. A record (Emp ID, name, designation) that managers mark attendance for. Which team someone works in is set **month by month**: each team has a monthly list of people (see below). Someone can be on more than one team's list. |
+| **Director (Super Admin)** | See and edit all teams' attendance, create teams, add supervisors, **add, edit and deactivate employees** (only the director can), change settings, export monthly reports. Logs in with their **mobile number + SMS code**. |
+| **Supervisor (Team Admin)** | Put existing employees on or off their teams' monthly lists, and mark daily attendance, for **their own teams only**. Can't add new employees, change their details or deactivate them. One supervisor can handle **several teams**, and one team can have several supervisors. Logs in with their **mobile number + SMS code**, the number the director added them with. |
+| **Accountant (View only)** | The link between the supervisors and the director. Sees what the director sees: the dashboard, every team's sheets, the teams, employee history and the monthly reports (and can share the Excel file). **Can't change anything**: there are no save, add, edit or delete buttons, and the security rules refuse any change. Added, edited and deactivated by the director by **mobile number**, like a supervisor; logs in with **mobile number + SMS code**. |
+| **Employee** | No login. A record (Emp ID, name, designation) that supervisors mark attendance for. Which team someone works in is set **month by month**: each team has a monthly list of people (see below). Someone can be on more than one team's list. |
 
 ## Company structure
 
 ```
 Company
- ├── Marketing  → Manager(s) → Employees
- ├── Finance    → Manager(s) → Employees
- └── Legal      → Manager(s) → Employees
+ ├── Marketing  → Supervisor(s) → Employees
+ ├── Finance    → Supervisor(s) → Employees
+ └── Legal      → Supervisor(s) → Employees
 ```
 
 ---
@@ -46,17 +47,17 @@ Install app → Log in with mobile number + SMS code
    → A number not in any company yet is offered "Set up a new company"
      (company name + your name) and becomes its director
    → Create teams (Marketing, Finance, Legal…)
-   → Add managers (name + mobile number) and assign each one or more teams
+   → Add supervisors (name + mobile number) and assign each one or more teams
    → Set office rules (office hours, late cutoff, half-day rule)
 ```
 
-### 2. Manager setup
+### 2. Supervisor setup
 ```
 Install app → Log in with the mobile number the director added + the SMS code
    → Add employees to each of their teams (Emp ID, name, designation)
 ```
 
-### 3. Daily attendance (manager)
+### 3. Daily attendance (supervisor)
 ```
 Open app → Today's Attendance → pick a team from the selector
    For each employee:
@@ -66,9 +67,9 @@ Open app → Today's Attendance → pick a team from the selector
    → Save → data goes online instantly → switch to the next team
 ```
 - The "All my teams" view shows which teams are done and which are pending today.
-- Managers can edit the **last 7 days**. Only the director can change older records.
+- Supervisors can edit the **last 7 days**. Only the director can change older records.
 - There are no passwords or PINs to forget: each login on a new phone gets a fresh SMS code.
-- A manager who changes their number is added again with the new number (and the old entry deactivated), then given their teams back.
+- A supervisor who changes their number is added again with the new number (and the old entry deactivated), then given their teams back.
 
 ### 4. Director dashboard
 ```
@@ -108,7 +109,7 @@ Each day's hours earn a share of a day's pay, the **Dihadi**. Pay = total Dihadi
 | Office hours | 9:30 AM – 6:30 PM |
 | Late after | 9:45 AM |
 | Half-day (status shown on the sheet) | Less than 4 hours worked. Pay goes by the Dihadi table, not the status |
-| Manager edit window | Last 7 days |
+| Supervisor edit window | Last 7 days |
 
 ---
 
@@ -116,19 +117,19 @@ Each day's hours earn a share of a day's pay, the **Dihadi**. Pay = total Dihadi
 
 | Path | Stores |
 |---|---|
-| **users/{phone}** | Director/managers: company ID, role, name, phone, list of team IDs, active. Keyed by the mobile number in international form (`+919876543210`), which is also what the login token carries, so the app finds the company right after login and a director can add a manager before they ever log in. One number belongs to one company |
+| **users/{phone}** | Director/supervisors/accountants: company ID, role (`director`, `supervisor` or `accountant`), name, phone, list of team IDs, active. Keyed by the mobile number in international form (`+919876543210`), which is also what the login token carries, so the app finds the company right after login and a director can add a supervisor before they ever log in. One number belongs to one company |
 | **companies/{companyId}** | Name, creator's number, office rules (`settings`) |
-| **companies/{companyId}/teams** | Team name. Who manages a team is stored on each manager (`teamIds` in **users**), so the two can't disagree |
-| **companies/{companyId}/employees** | Keyed by Emp ID (so IDs are unique in the company): Emp ID, name, designation (optional), active/inactive. Every manager can read the staff list and keep the details up to date |
-| **companies/{companyId}/rosters** | Each team's monthly list of people, keyed `{teamId}_{yyyy-MM}`: team, month, Emp IDs. A month with no list of its own uses the latest earlier month's, so a new month automatically starts with last month's people. Managers change their own teams' lists for this month or next; older ones only the director |
-| **companies/{companyId}/attendance** | One sheet per team per day, keyed `{teamId}_{yyyy-MM-dd}`: team, date, an entry per employee (status, in/out time, minutes worked, late flag; `guest` for someone lent from another team for the day; `workingIn` for someone absent because they worked in another team), who saved it last and when. One document per sheet, so a team's day is saved in one go. Every member can read all sheets (to see who was lent where); managers save their own teams' sheets within the edit window. The monthly report adds an employee's teams together |
+| **companies/{companyId}/teams** | Team name. Who supervises a team is stored on each supervisor (`teamIds` in **users**), so the two can't disagree |
+| **companies/{companyId}/employees** | Keyed by Emp ID (so IDs are unique in the company): Emp ID, name, designation (optional), active/inactive. Every supervisor can read the staff list and keep the details up to date |
+| **companies/{companyId}/rosters** | Each team's monthly list of people, keyed `{teamId}_{yyyy-MM}`: team, month, Emp IDs. A month with no list of its own uses the latest earlier month's, so a new month automatically starts with last month's people. Supervisors change their own teams' lists for this month or next; older ones only the director |
+| **companies/{companyId}/attendance** | One sheet per team per day, keyed `{teamId}_{yyyy-MM-dd}`: team, date, an entry per employee (status, in/out time, minutes worked, late flag; `guest` for someone lent from another team for the day; `workingIn` for someone absent because they worked in another team), who saved it last and when. One document per sheet, so a team's day is saved in one go. Every member can read all sheets (to see who was lent where); supervisors save their own teams' sheets within the edit window. The monthly report adds an employee's teams together |
 
 **Phone login setup** (Firebase console, once per project):
 1. Authentication → Sign-in method → turn on **Phone**.
 2. Project settings → your Android app → add the **SHA-1 and SHA-256** fingerprints of both the debug key and the release key (`keytool -list -v -keystore <keystore>`, or `./gradlew signingReport` in `android/`). Without them Android can't send codes.
 3. For testing without real SMS: Authentication → Sign-in method → Phone → **Phone numbers for testing** (e.g. `+91 90000 00001`, code `123456`). Real SMS beyond the free daily allowance needs the Blaze (pay-as-you-go) plan; the console says so when it's needed.
 
-**Security rules:** managers can change only the teams on their list (they can read the whole company's staff lists and sheets, to see who works where). The director can read and write everything. Nobody can access anything without logging in.
+**Security rules:** supervisors can change only the teams on their list (they can read the whole company's staff lists and sheets, to see who works where). The director can read and write everything. An accountant can read everything in their company and write nothing. Nobody can access anything without logging in.
 The rules live in [firestore.rules](firestore.rules). To test and publish them (Java is needed; Android Studio's copy works: `D:\Android studio\Android studio\jbr`):
 ```
 cd firestore_tests
@@ -148,8 +149,9 @@ The app starts with one firm but is meant to be offered to other firms later. So
 ## Screens
 
 1. **Login**
-2. **Director:** Dashboard · Teams · Managers · Reports · Settings
-3. **Manager:** Today's Attendance · My Employees · Past Days
+2. **Director:** Dashboard · Teams · Employees · People (supervisors and accountants) · Reports · Settings
+3. **Supervisor:** Today's Attendance · My Employees · Past Days
+4. **Accountant (view only):** Dashboard (with employee history) · Teams · Reports (with the Excel file)
 
 ---
 
@@ -163,7 +165,7 @@ Each phase is finished and tested on a real phone before moving to the next.
 - [x] Run `flutter doctor` and fix any issues
 - [x] Create a **Firebase project** (console.firebase.google.com)
   - Project ID: `daily-attendance-b1b1e` · Spark (free) plan
-  - Authentication: Phone enabled (was Email/Password before the phone-login change)
+  - Authentication: Phone enabled (was Email/Password before the Phase 9 phone-login change)
   - Firestore: `(default)` database, Standard edition, `asia-south2 (Delhi)`, production mode
 - [ ] On the Android phone: turn on **Developer options** and **USB debugging** (deferred: testing on the emulator `Medium_Phone_API_37.0` until before Phase 5)
 
@@ -177,60 +179,60 @@ Each phase is finished and tested on a real phone before moving to the next.
 **Done when:** an empty app with the "Daily Attendance" name runs on the emulator (phone later) and is connected to Firebase.
 
 ### Phase 2: Login and roles
-- [x] Login screen with a Manager / Director switch (replaced later by phone login, see "Changes after the first demo")
+- [x] Login screen with a Supervisor / Director switch (replaced later by phone login, see Phase 9)
 - [x] Director sign-up that creates the company
-- [x] Open the director dashboard or the manager home depending on role
+- [x] Open the director dashboard or the supervisor home depending on role
 - [x] First version of the Firestore security rules (deployed; tested in [firestore_tests/](firestore_tests/))
 - [x] Check on the emulator: Director sign-up shows the director dashboard
-- [x] Check on the emulator: manager login (checked in Phase 3, with a manager added from the app)
+- [x] Check on the emulator: supervisor login (checked in Phase 3, with a supervisor added from the app)
 
-**Done when:** the director and a test manager log in and land on different screens.
+**Done when:** the director and a test supervisor log in and land on different screens.
 
 
 ### Phase 3: Company setup (Director)
-- [x] Create / rename / delete teams (a team with employees can't be deleted; deleting one takes it off its managers)
-- [x] Add managers and assign them one or more teams (now by mobile number)
-- [x] Edit a manager's name and teams; deactivate / reactivate a manager
+- [x] Create / rename / delete teams (a team with employees can't be deleted; deleting one takes it off its supervisors)
+- [x] Add supervisors and assign them one or more teams (now by mobile number)
+- [x] Edit a supervisor's name and teams; deactivate / reactivate a supervisor
 - [x] Settings screen: company name, office hours, late cutoff, half-day hours, edit window
-- [x] Security rules for teams and managers (tested in [firestore_tests/](firestore_tests/))
+- [x] Security rules for teams and supervisors (tested in [firestore_tests/](firestore_tests/))
 - [x] Deploy the updated security rules
-- [x] Check on the emulator: add a team and a manager as director, then log in as that manager
+- [x] Check on the emulator: add a team and a supervisor as director, then log in as that supervisor
 
-**Done when:** the director has set up all teams and managers in the app.
+**Done when:** the director has set up all teams and supervisors in the app.
 
 <details>
-<summary>How adding a manager works</summary>
+<summary>How adding a supervisor works</summary>
 
-The director saves the manager's profile under their mobile number (`users/{phone}`). No login is created in advance: the first time the manager logs in with that number and the SMS code, the app finds the profile waiting for them. The security rules refuse a number that's already in the app, in any company.
+The director saves the supervisor's profile under their mobile number (`users/{phone}`). No login is created in advance: the first time the supervisor logs in with that number and the SMS code, the app finds the profile waiting for them. The security rules refuse a number that's already in the app, in any company.
 </details>
 
-### Phase 4: Employees (manager)
+### Phase 4: Employees (supervisor)
 - [x] Add / edit / deactivate employees (Emp ID, name, designation). The Emp ID is unique in the company and can't be changed after adding; employees are never deleted, only deactivated
-- [x] Monthly team lists: the manager picks who works in each team for the month, and the next month starts as a copy. People can be added (new, or "From another team") or taken off during the month. Past months are view only; next month can be planned ahead
-- [x] Team selector for managers with several teams (one team: just its name)
-- [x] Security rules for employees and monthly lists: a manager changes only their own teams' lists, for this month or next (tested in [firestore_tests/](firestore_tests/))
+- [x] Monthly team lists: the supervisor picks who works in each team for the month, and the next month starts as a copy. People can be added (new, or "From another team") or taken off during the month. Past months are view only; next month can be planned ahead
+- [x] Team selector for supervisors with several teams (one team: just its name)
+- [x] Security rules for employees and monthly lists: a supervisor changes only their own teams' lists, for this month or next (tested in [firestore_tests/](firestore_tests/))
 - [x] Deploy the updated security rules
-- [x] Check on the emulator: log in as a manager with two teams, add employees to each, put one person on both lists, check the next month starts with the same people
+- [x] Check on the emulator: log in as a supervisor with two teams, add employees to each, put one person on both lists, check the next month starts with the same people
 
 **Done when:** every team has its employee list.
 
 ### Phase 5: Daily attendance (core feature)
-- [x] Today's Attendance screen with a team selector. It lists the team's monthly list, so the manager doesn't pick people each day
-- [x] A worker lent to another team for the day: that team's manager adds them to the day's sheet ("Add someone from another team") and marks them present; they then show automatically as absent on their own team's sheet, labelled "Working in Team B"
+- [x] Today's Attendance screen with a team selector. It lists the team's monthly list, so the supervisor doesn't pick people each day
+- [x] A worker lent to another team for the day: that team's supervisor adds them to the day's sheet ("Add someone from another team") and marks them present; they then show automatically as absent on their own team's sheet, labelled "Working in Team B"
 - [x] Status buttons: Present / Absent / Half-day / Leave, plus "Mark everyone present" / "Mark the rest present"
 - [x] In/out time pickers. Present starts at the office start time; "Out time for all" sets one out time for everyone without one
 - [x] Automatic hours worked and late flag. A day shorter than the half-day hours becomes a half-day automatically
 - [x] "All my teams" done/pending status (on the team selector)
-- [x] Edit past days (the edit window from Settings, 7 days by default) on the Past days tab; older days are view only for managers
-- [x] Security rules for attendance: a manager saves only their own teams' sheets, within the edit window; the director any (tested in [firestore_tests/](firestore_tests/))
+- [x] Edit past days (the edit window from Settings, 7 days by default) on the Past days tab; older days are view only for supervisors
+- [x] Security rules for attendance: a supervisor saves only their own teams' sheets, within the edit window; the director any (tested in [firestore_tests/](firestore_tests/))
 - [x] Deploy the updated security rules
 - [x] Check on the emulator: mark a team, save, lend a worker to a second team, correct yesterday from Past days
 
-**Done when:** a manager can fully replace the paper register. ✅ *First usable version.*
+**Done when:** a supervisor can fully replace the paper register. ✅ *First usable version.*
 
 ### Phase 6: Director dashboard
 - [x] Today's overview per team (present / absent / pending), plus whole-company totals that count each person once. Step back to any earlier day with the arrows or the calendar
-- [x] Team view: that day's full log. It's the managers' sheet with every team to switch to, and the director can correct any day up to today (no edit window)
+- [x] Team view: that day's full log. It's the supervisors' sheet with every team to switch to, and the director can correct any day up to today (no edit window)
 - [x] Employee history for any date range (up to a year at a time): days present, half-days, absent, leave, late marks, hours, and each day's team and times
 - [x] Check on the emulator: as director, see today's counts, open a team, correct a day older than 7 days, look up one person's history
 
@@ -247,29 +249,58 @@ The director saves the manager's profile under their mobile number (`users/{phon
 
 ### Phase 8: Testing and release
 - [x] Confirm the timing rules with the firm (what counts as a full day and a half-day, breaks, minimum hours) and update the app to match (see "Pay rule: Dihadi")
-- [x] Finalise and test the security rules with sample data (53 tests in `firestore_tests` after the phone-login change; publish again after that change)
+- [x] Finalise and test the security rules with sample data (re-tested and re-published for phone login in Phase 9)
 - [ ] Create the app signing key and **back it up safely** (it can't be recovered, and without it you can't release updates)
 - [ ] Build the release APK
 - [ ] Share the APK through one trusted channel (e.g. a Google Drive link)
-- [ ] Help managers install it
+- [ ] Help supervisors install it
 
-**Done when:** managers are using the app and the paper register is no longer needed.
+**Done when:** supervisors are using the app and the paper register is no longer needed.
 
-### Changes after the first demo
+### Phase 9: Changes after the first demo
+Requested by the director after seeing the app. Every change made after Phase 8 is recorded here.
 - [x] "CEO" renamed to **Director** everywhere: screens, Excel, code, the saved role (`director`), security rules
-- [x] **Phone login** for directors and managers: mobile number + SMS code. No more email/password, company code, username or PIN
-- [x] A new number is offered "Set up a new company"; a manager the director hasn't added yet is told to ask for it
-- [x] Managers are added by mobile number
-- [x] Security rules and tests updated (profiles keyed by phone number)
+- [x] **Phone login** for directors and supervisors: mobile number + SMS code. No more email/password, company code, username or PIN
+- [x] A new number is offered "Set up a new company"; a supervisor the director hasn't added yet is told to ask for it
+- [x] Supervisors are added by mobile number
+- [x] Security rules and tests updated (profiles keyed by phone number; 53 tests in [firestore_tests/](firestore_tests/))
 - [ ] Firebase console: turn on Phone sign-in, add SHA-1/SHA-256 (debug + release), add test numbers
-- [ ] Delete the old test data (old email logins and `users`/`companies`/`companyCodes` documents) and publish the new rules
-- [ ] Check on the emulator / phone: set up a company with a test number, add a manager by number, log in as them
+- [x] Delete the old test data (`users`/`companies`/`companyCodes`, all of Firestore, 2026-11-27) and publish the new rules
+- [ ] Delete the old email logins (Firebase console → Authentication → Users). Optional: they can't get into the phone-only app
+- [ ] Check on the emulator / phone: set up a company with a test number, add a supervisor by number, log in as them
+- [x] **Only the director adds, edits or deactivates employees** (app and security rules; rules published). The director has an Employees tab for every team; supervisors only put existing staff on or off their own teams' lists, and see details read-only
+- [ ] Check on the phone: director adds an employee; a supervisor's "Add to team" offers only existing staff
+- [x] **"Manager" renamed to Supervisor** everywhere (director's request): screens, Excel, code and folders (`lib/features/supervisor/`), the saved role (`supervisor`), the edit-window setting (`supervisorEditDays`), security rules and tests. App tests pass
+- [x] Publish the renamed security rules, and remove the old records saved with the role `manager` (all test data deleted 2026-11-27)
+- [x] Fixed the rules test "adding a new employee and putting them on a list in one batch": it now expects a supervisor to be refused and the director allowed (all 56 rules tests pass)
+- [ ] Check on the phone: the director's People tab lists supervisors; add a supervisor and log in as them
+- [x] **Accountant role** (director's request), the link between supervisors and the director, view only:
+  - New role `accountant` in the app and the security rules
+  - The director adds, edits and deactivates accountants by mobile number on the People tab ("Add" → Accountant), the same way as a supervisor but with no teams. They're listed under "Accountants"
+  - The accountant's app reuses the director's screens with every edit button hidden: Dashboard (team sheets open view only, plus employee history), Teams (no add, rename or delete) and Reports (with the Excel export). No Employees, People or Settings tabs
+  - No save button anywhere for the accountant. The rules also give them no write access: they can read their company's data and profiles, nothing else
+  - Tests: the director adds and edits an accountant, and the accountant's screens are view only (app tests); the director adds and edits an accountant, and an accountant can read their firm (3 rules tests)
+- [x] The director's **Supervisors tab renamed "People"**: it lists supervisors and accountants in their own sections, with one "Add" button (Supervisor or Accountant)
+- [x] Publish the updated security rules (accountant role), 2026-11-27
+- [ ] Check on the phone: the director adds an accountant; log in as them and check Dashboard, Teams and Reports are view only, and the Excel file shares
+
+#### Later: daily pay in the app (planned, not started)
+The app now works out Dihadi; the daily rate is typed by the director in the Excel file. The plan to keep rates in the app:
+- [ ] Store each worker's **daily rate** in a separate, director-only place (`companies/{id}/rates/{empId}`), never on the employee record, so supervisors can't see pay. Add rules checks (a positive number) and tests, then publish the rules
+- [ ] "Daily rate (₹)" field on the director's employee form; supervisors never see it
+- [ ] Reports: pay per person (Dihadi × rate) and a total; someone with no rate is flagged
+- [ ] Excel: the Summary tab's rate cells come filled in (still editable there for one-offs)
+- Start simple: one **current rate** per worker. If rates change mid-month often, later keep dated rates ("₹550 from 15 Nov") so each day is paid at the rate it had
+- Not included: advances, deductions, bonuses
+
+**Done when:** the director's requested changes are working on the phone. New points from the director are added to this list.
 
 ### Milestones
 ```
 Phase 0 → 1 → 2 → 3 → 4 → 5   ← usable app (paper register replaced)
                          → 6 → 7   ← director dashboard + payroll ready
                               → 8   ← live in the firm
+                                   → 9   ← director's changes after the demo
 ```
 
 ---
@@ -277,15 +308,15 @@ Phase 0 → 1 → 2 → 3 → 4 → 5   ← usable app (paper register replaced)
 ## Distribution (APK)
 
 - The app is shared as an **APK file** (the Android installer file) instead of through the Play Store, which is free and needs no review.
-- Managers open the file, allow "Install unknown apps" once for that source (e.g. Drive), then install.
+- Supervisors open the file, allow "Install unknown apps" once for that source (e.g. Drive), then install.
 - Updates: share a new APK and install it over the old one. Data is kept because it's stored online.
-- Share it only through one trusted channel, and tell managers not to install copies forwarded by others.
+- Share it only through one trusted channel, and tell supervisors not to install copies forwarded by others.
 - APKs work on **Android only**. If anyone uses an iPhone, a web version can be built from the same Flutter code.
 - The app can move to the Play Store later ($25 one-time fee) without code changes.
 
 ## Future ideas (not in the first version)
 
-- Reminder notification for managers to mark attendance
+- Reminder notification for supervisors to mark attendance
 - Web version for iPhone users / desktop
 - Leave requests and approvals
 - Holiday calendar

@@ -55,7 +55,7 @@ void main() {
 
     expect(find.text('Daily Attendance'), findsOneWidget);
     expect(find.text('Send code'), findsOneWidget);
-    // One login for everyone: no director/manager switch.
+    // One login for everyone: no director/supervisor switch.
     expect(find.text('Director'), findsNothing);
   });
 
@@ -82,20 +82,22 @@ void main() {
     await logIn(tester, '90000 00001');
 
     expect(auth.codesSentTo, ['+919000000001']);
-    for (final tab in ['Dashboard', 'Teams', 'Managers', 'Reports']) {
+    for (final tab in ['Dashboard', 'Teams', 'People', 'Reports']) {
       expect(find.text(tab), findsWidgets);
     }
     expect(find.text('Past days'), findsNothing);
   });
 
-  testWidgets('a manager logs in with their number and code', (tester) async {
+  testWidgets('a supervisor logs in with their number and code', (
+    tester,
+  ) async {
     await startApp(tester);
     await logIn(tester, '+91 90000 00011');
 
     for (final tab in ['Today', 'Employees', 'Past days']) {
       expect(find.text(tab), findsWidgets);
     }
-    expect(find.text('Managers'), findsNothing);
+    expect(find.text('People'), findsNothing);
   });
 
   testWidgets('the code screen shows the number and can go back', (
@@ -141,7 +143,7 @@ void main() {
   });
 
   testWidgets('log out returns to the login screen', (tester) async {
-    await startApp(tester, initial: const SignedIn(managerUser));
+    await startApp(tester, initial: const SignedIn(supervisorUser));
     expect(find.text('Past days'), findsWidgets);
 
     await tester.tap(find.byTooltip('Log out'));
@@ -151,7 +153,10 @@ void main() {
   });
 
   testWidgets('a deactivated account sees the problem screen', (tester) async {
-    final auth = await startApp(tester, initial: const SignedIn(managerUser));
+    final auth = await startApp(
+      tester,
+      initial: const SignedIn(supervisorUser),
+    );
     auth.session = const SessionProblem('Your account has been deactivated.');
     await tester.pumpAndSettle();
 
@@ -169,7 +174,7 @@ void main() {
     await logIn(tester, '9876543210');
 
     expect(find.text('Set up a new company'), findsOneWidget);
-    // A manager who landed here is told what to do.
+    // A supervisor who landed here is told what to do.
     expect(find.textContaining('+91 98765 43210'), findsOneWidget);
 
     Future<void> fill(String label, String text) =>

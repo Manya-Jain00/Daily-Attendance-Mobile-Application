@@ -8,7 +8,7 @@ import '../../shared/widgets/load_state.dart';
 import 'employees_page.dart';
 
 /// Put someone already in the company on a team's monthly list. This is how
-/// a manager adds people to their teams: only the director creates new
+/// a supervisor adds people to their teams: only the director creates new
 /// employees.
 class PickEmployeePage extends StatefulWidget {
   const PickEmployeePage({

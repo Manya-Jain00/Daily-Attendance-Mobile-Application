@@ -10,7 +10,7 @@ import 'form_validators.dart';
 
 /// Shown after logging in with a number that isn't in any company yet.
 ///
-/// A director creates their company here and becomes its director. A manager
+/// A director creates their company here and becomes its director. A supervisor
 /// whose director hasn't added this number yet is told to ask for it; once
 /// the director adds them, the app opens their home by itself.
 class CompanySetupScreen extends StatefulWidget {
@@ -84,7 +84,7 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
                           margin: EdgeInsets.zero,
                           child: ListTile(
                             leading: const Icon(Icons.badge_outlined),
-                            title: const Text('Are you a manager?'),
+                            title: const Text('Are you a supervisor?'),
                             subtitle: Text(
                               'Ask your director to add '
                               '${PhoneNumber.format(phone)} in the app. '
@@ -102,7 +102,7 @@ class _CompanySetupScreenState extends State<CompanySetupScreen> {
                         const SizedBox(height: 4),
                         Text(
                           'For the director or owner. You can add teams and '
-                          'managers after this.',
+                          'supervisors after this.',
                           style: muted,
                         ),
                         const SizedBox(height: 24),

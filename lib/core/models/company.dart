@@ -20,7 +20,7 @@ class CompanySettings {
     required this.officeEnd,
     required this.lateAfter,
     required this.halfDayBelowHours,
-    required this.managerEditDays,
+    required this.supervisorEditDays,
   });
 
   /// What every new company starts with.
@@ -29,12 +29,12 @@ class CompanySettings {
     officeEnd: '18:30',
     lateAfter: '09:45',
     halfDayBelowHours: 4,
-    managerEditDays: 7,
+    supervisorEditDays: 7,
   );
 
   /// Limits of the +/- buttons in Settings.
   static const maxHalfDayHours = 12;
-  static const maxManagerEditDays = 31;
+  static const maxSupervisorEditDays = 31;
 
   static final _timePattern = RegExp(r'^([01][0-9]|2[0-3]):[0-5][0-9]$');
 
@@ -49,9 +49,9 @@ class CompanySettings {
   /// Working fewer hours than this counts as a half day.
   final num halfDayBelowHours;
 
-  /// How many past days a manager may still correct. Older records are
+  /// How many past days a supervisor may still correct. Older records are
   /// director-only.
-  final int managerEditDays;
+  final int supervisorEditDays;
 
   /// Reads stored settings, falling back to the default for any field that's
   /// missing or malformed, so a bad record can't crash the app.
@@ -63,13 +63,15 @@ class CompanySettings {
     }
 
     final halfDay = map['halfDayBelowHours'];
-    final editDays = map['managerEditDays'];
+    final editDays = map['supervisorEditDays'];
     return CompanySettings(
       officeStart: time('officeStart', defaults.officeStart),
       officeEnd: time('officeEnd', defaults.officeEnd),
       lateAfter: time('lateAfter', defaults.lateAfter),
       halfDayBelowHours: halfDay is num ? halfDay : defaults.halfDayBelowHours,
-      managerEditDays: editDays is int ? editDays : defaults.managerEditDays,
+      supervisorEditDays: editDays is int
+          ? editDays
+          : defaults.supervisorEditDays,
     );
   }
 
@@ -78,7 +80,7 @@ class CompanySettings {
     'officeEnd': officeEnd,
     'lateAfter': lateAfter,
     'halfDayBelowHours': halfDayBelowHours,
-    'managerEditDays': managerEditDays,
+    'supervisorEditDays': supervisorEditDays,
   };
 
   CompanySettings copyWith({
@@ -86,13 +88,13 @@ class CompanySettings {
     String? officeEnd,
     String? lateAfter,
     num? halfDayBelowHours,
-    int? managerEditDays,
+    int? supervisorEditDays,
   }) => CompanySettings(
     officeStart: officeStart ?? this.officeStart,
     officeEnd: officeEnd ?? this.officeEnd,
     lateAfter: lateAfter ?? this.lateAfter,
     halfDayBelowHours: halfDayBelowHours ?? this.halfDayBelowHours,
-    managerEditDays: managerEditDays ?? this.managerEditDays,
+    supervisorEditDays: supervisorEditDays ?? this.supervisorEditDays,
   );
 
   @override
@@ -102,7 +104,7 @@ class CompanySettings {
       other.officeEnd == officeEnd &&
       other.lateAfter == lateAfter &&
       other.halfDayBelowHours == halfDayBelowHours &&
-      other.managerEditDays == managerEditDays;
+      other.supervisorEditDays == supervisorEditDays;
 
   @override
   int get hashCode => Object.hash(
@@ -110,13 +112,13 @@ class CompanySettings {
     officeEnd,
     lateAfter,
     halfDayBelowHours,
-    managerEditDays,
+    supervisorEditDays,
   );
 }
 
 /// A team, as stored in `companies/{companyId}/teams/{teamId}`.
 ///
-/// Which managers look after a team is stored on each manager (`teamIds` in
+/// Which supervisors look after a team is stored on each supervisor (`teamIds` in
 /// their profile), not here, so the two can never disagree.
 class Team {
   const Team({required this.id, required this.name});

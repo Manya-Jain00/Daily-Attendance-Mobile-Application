@@ -12,20 +12,20 @@ void main() {
       expect(redirectFor(s, AppRoutes.login), isNull);
       expect(redirectFor(s, AppRoutes.companySetup), AppRoutes.login);
       expect(redirectFor(s, AppRoutes.director), AppRoutes.login);
-      expect(redirectFor(s, AppRoutes.manager), AppRoutes.login);
+      expect(redirectFor(s, AppRoutes.supervisor), AppRoutes.login);
       expect(redirectFor(s, AppRoutes.splash), AppRoutes.login);
     });
 
-    test('a manager can never open the director area', () {
-      const s = SignedIn(managerUser);
-      expect(redirectFor(s, AppRoutes.director), AppRoutes.manager);
-      expect(redirectFor(s, AppRoutes.login), AppRoutes.manager);
-      expect(redirectFor(s, AppRoutes.manager), isNull);
+    test('a supervisor can never open the director area', () {
+      const s = SignedIn(supervisorUser);
+      expect(redirectFor(s, AppRoutes.director), AppRoutes.supervisor);
+      expect(redirectFor(s, AppRoutes.login), AppRoutes.supervisor);
+      expect(redirectFor(s, AppRoutes.supervisor), isNull);
     });
 
     test('a director is sent to the director area', () {
       const s = SignedIn(directorUser);
-      expect(redirectFor(s, AppRoutes.manager), AppRoutes.director);
+      expect(redirectFor(s, AppRoutes.supervisor), AppRoutes.director);
       expect(redirectFor(s, AppRoutes.companySetup), AppRoutes.director);
       expect(redirectFor(s, AppRoutes.director), isNull);
     });
@@ -43,7 +43,7 @@ void main() {
       expect(redirectFor(s, AppRoutes.companySetup), isNull);
       expect(redirectFor(s, AppRoutes.login), AppRoutes.companySetup);
       expect(redirectFor(s, AppRoutes.director), AppRoutes.companySetup);
-      expect(redirectFor(s, AppRoutes.manager), AppRoutes.companySetup);
+      expect(redirectFor(s, AppRoutes.supervisor), AppRoutes.companySetup);
     });
 
     test('an account problem always shows the problem screen', () {

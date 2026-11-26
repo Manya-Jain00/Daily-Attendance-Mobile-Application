@@ -5,7 +5,7 @@ import 'package:daily_attendance/core/models/day.dart';
 import 'package:daily_attendance/core/models/employee.dart';
 import 'package:daily_attendance/core/models/roster.dart';
 import 'package:daily_attendance/features/auth/auth_service.dart';
-import 'package:daily_attendance/features/manager/attendance_page.dart';
+import 'package:daily_attendance/features/supervisor/attendance_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -84,12 +84,12 @@ void main() {
       expect(Day(2026, 11, 15).label, 'Sun, 15 Nov');
     });
 
-    test('managers edit today and the edit window only', () {
+    test('supervisors edit today and the edit window only', () {
       final today = Day(2026, 11, 15);
-      expect(managerMayEdit(today, today, rules), isTrue);
-      expect(managerMayEdit(today.addDays(-7), today, rules), isTrue);
-      expect(managerMayEdit(today.addDays(-8), today, rules), isFalse);
-      expect(managerMayEdit(today.next, today, rules), isFalse);
+      expect(supervisorMayEdit(today, today, rules), isTrue);
+      expect(supervisorMayEdit(today.addDays(-7), today, rules), isTrue);
+      expect(supervisorMayEdit(today.addDays(-8), today, rules), isFalse);
+      expect(supervisorMayEdit(today.next, today, rules), isFalse);
     });
   });
 
@@ -128,7 +128,7 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
         DailyAttendanceApp(
-          auth: FakeAuthService(initial: const SignedIn(managerUser)),
+          auth: FakeAuthService(initial: const SignedIn(supervisorUser)),
           openCompany: (_) => FakeCompanyRepository(),
           openEmployees: (_) => repo,
         ),
@@ -256,7 +256,7 @@ void main() {
       expect(guest.status, AttendanceStatus.present);
     });
 
-    testWidgets('a manager with several teams sees which are done', (
+    testWidgets('a supervisor with several teams sees which are done', (
       tester,
     ) async {
       repo.myTeamIds = ['team-1', 'team-2'];
@@ -299,7 +299,7 @@ void main() {
     testWidgets('past days can be corrected within the edit window', (
       tester,
     ) async {
-      repo.settings = rules.copyWith(managerEditDays: 2);
+      repo.settings = rules.copyWith(supervisorEditDays: 2);
       await start(tester);
       await tap(
         tester,

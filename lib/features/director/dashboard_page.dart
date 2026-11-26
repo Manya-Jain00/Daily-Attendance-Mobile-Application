@@ -10,7 +10,7 @@ import '../../core/models/roster.dart';
 import '../../core/models/team_day.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
-import '../manager/attendance_page.dart';
+import '../supervisor/attendance_page.dart';
 import 'employee_history_page.dart';
 
 /// Director: how every team's day is going (today, or any earlier day), and the
@@ -18,7 +18,8 @@ import 'employee_history_page.dart';
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, required this.repository});
 
-  /// Opened for the director ([EmployeeRepository.isDirector]).
+  /// Opened for the director ([EmployeeRepository.isDirector]) or an
+  /// accountant ([EmployeeRepository.isAccountant]), who only views.
   final EmployeeRepository repository;
 
   @override
@@ -154,15 +155,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
   List<Widget> _overview({required List<Team> teams, required DayData data}) {
     if (teams.isEmpty) {
-      return const [
+      return [
         SizedBox(
           height: 280,
           child: EmptyState(
             icon: Icons.groups_outlined,
             title: 'No teams yet',
-            message:
-                'Add teams and managers on the Teams and Managers tabs. '
-                "Each team's attendance then shows here.",
+            message: _repo.isAccountant
+                ? "The director has not added any teams yet. Each team's "
+                      'attendance then shows here.'
+                : 'Add teams and supervisors on the Teams and People tabs. '
+                      "Each team's attendance then shows here.",
           ),
         ),
       ];

@@ -16,7 +16,7 @@ import '../../core/models/roster.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
 import '../../shared/widgets/month_selector.dart';
-import '../manager/employees_page.dart' show initialOf;
+import '../supervisor/employees_page.dart' show initialOf;
 
 /// Hands a finished file to the phone's share sheet (WhatsApp, email,
 /// Drive, …). [origin] is where the button is, for tablets.
@@ -58,7 +58,8 @@ class ReportsPage extends StatefulWidget {
     this.share = shareWithPhone,
   });
 
-  /// Opened for the director ([EmployeeRepository.isDirector]).
+  /// Opened for the director ([EmployeeRepository.isDirector]) or an
+  /// accountant ([EmployeeRepository.isAccountant]), who only views.
   final EmployeeRepository repository;
 
   final ShareFile share;

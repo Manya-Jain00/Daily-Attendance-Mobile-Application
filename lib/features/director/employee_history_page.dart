@@ -9,8 +9,8 @@ import '../../core/models/overview.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
-import '../manager/attendance_page.dart' show statusColor;
-import '../manager/employees_page.dart' show initialOf;
+import '../supervisor/attendance_page.dart' show statusColor;
+import '../supervisor/employees_page.dart' show initialOf;
 
 /// Director: one employee's attendance over any dates, across every team they
 /// worked in. First pick the person, then the dates.
@@ -158,7 +158,7 @@ class _EmployeeHistoryPageState extends State<EmployeeHistoryPage> {
                   icon: Icons.person_search_outlined,
                   title: employees.isEmpty ? 'No employees yet' : 'No match',
                   message: employees.isEmpty
-                      ? 'Managers add employees on their Employees tab.'
+                      ? 'Supervisors add employees on their Employees tab.'
                       : 'Check the spelling of the name or Emp ID.',
                 )
               : ListView.separated(

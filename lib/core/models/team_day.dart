@@ -38,7 +38,7 @@ class SheetRow {
 ///
 /// That's the team's monthly list ([listEmpIds]) plus anyone borrowed for the
 /// day. People who have left are kept off, unless they already have an entry
-/// that day. [entries] is the sheet as saved, or the manager's unsaved
+/// that day. [entries] is the sheet as saved, or the supervisor's unsaved
 /// changes.
 List<SheetRow> sheetRows({
   required String teamId,

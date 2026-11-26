@@ -11,7 +11,7 @@ import 'auth_service.dart';
 import 'form_validators.dart';
 
 /// Everyone logs in the same way: mobile number, then the code sent to it by
-/// SMS. Whether they're a director or a manager comes from their profile.
+/// SMS. Whether they're a director or a supervisor comes from their profile.
 /// A number that isn't in any company yet is offered to set one up.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

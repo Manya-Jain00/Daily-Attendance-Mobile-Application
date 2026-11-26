@@ -11,7 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
 import 'attendance_page.dart';
 
-/// Manager: the days before today that can still be corrected, with how far
+/// Supervisor: the days before today that can still be corrected, with how far
 /// each team's sheet got. Tapping a team opens that day's sheet.
 class PastDaysPage extends StatefulWidget {
   const PastDaysPage({super.key, required this.repository});
@@ -45,7 +45,7 @@ class _PastDaysPageState extends State<PastDaysPage> {
     _today = today;
     _rosters = _repo.watchRosters(today.monthOf);
     _sheets = _repo.watchAttendance(
-      today.addDays(-CompanySettings.maxManagerEditDays),
+      today.addDays(-CompanySettings.maxSupervisorEditDays),
       today.previous,
     );
   }
@@ -115,7 +115,7 @@ class _PastDaysPageState extends State<PastDaysPage> {
             'one.',
       );
     }
-    final editDays = settings.managerEditDays;
+    final editDays = settings.supervisorEditDays;
     if (editDays == 0) {
       return const EmptyState(
         icon: Icons.lock_outline,

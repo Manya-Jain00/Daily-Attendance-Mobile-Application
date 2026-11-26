@@ -9,8 +9,8 @@ rules_version = '2';
 //                                   which is also their login: companyId,
 //                                   role, ...
 //   companies/{companyId}           company name, createdBy, office settings
-//   companies/{companyId}/teams     team names (who manages a team is on the
-//                                   manager's profile: users/{uid}.teamIds)
+//   companies/{companyId}/teams     team names (who supervises a team is on the
+//                                   supervisor's profile: users/{uid}.teamIds)
 //   companies/{companyId}/employees employees, keyed by Emp ID
 //   companies/{companyId}/rosters   who works in a team each month
 //   companies/{companyId}/attendance one sheet per team per day
@@ -65,9 +65,15 @@ service cloud.firestore {
       return isActiveMemberOf(companyId) && me().role == 'director';
     }
 
+    // Accountants see what the director sees, but no rule lets them write:
+    // every write below needs the director or a supervisor.
+    function isAccountantOf(companyId) {
+      return isActiveMemberOf(companyId) && me().role == 'accountant';
+    }
+
     // Only call after checking hasProfile() (e.g. via isActiveMemberOf).
-    function isManager() {
-      return me().role == 'manager';
+    function isSupervisor() {
+      return me().role == 'supervisor';
     }
 
     // Mobile numbers in E.164 form, as Firebase puts them in the token.
@@ -84,23 +90,23 @@ service cloud.firestore {
     }
 
     // Office settings, with the same limits as the Settings screen
-    // (lib/core/models/company.dart). Manager saves read managerEditDays, so
-    // a bad value here would lock every manager out.
+    // (lib/core/models/company.dart). Supervisor saves read supervisorEditDays, so
+    // a bad value here would lock every supervisor out.
     function validSettings(settings) {
       return settings is map
         && settings.keys().hasOnly(['officeStart', 'officeEnd', 'lateAfter',
-             'halfDayBelowHours', 'managerEditDays'])
+             'halfDayBelowHours', 'supervisorEditDays'])
         && settings.keys().hasAll(['officeStart', 'officeEnd', 'lateAfter',
-             'halfDayBelowHours', 'managerEditDays'])
+             'halfDayBelowHours', 'supervisorEditDays'])
         && validTime(settings.officeStart)
         && validTime(settings.officeEnd)
         && validTime(settings.lateAfter)
         && settings.halfDayBelowHours is number
         && settings.halfDayBelowHours > 0
         && settings.halfDayBelowHours <= 12
-        && settings.managerEditDays is int
-        && settings.managerEditDays >= 0
-        && settings.managerEditDays <= 31;
+        && settings.supervisorEditDays is int
+        && settings.supervisorEditDays >= 0
+        && settings.supervisorEditDays <= 31;
     }
 
     function validUserFields(data) {
@@ -108,7 +114,7 @@ service cloud.firestore {
                ['companyId', 'role', 'name', 'phone', 'teamIds', 'active',
                 'createdAt'])
         && data.companyId is string
-        && data.role in ['director', 'manager']
+        && data.role in ['director', 'supervisor', 'accountant']
         && validName(data.name)
         && data.teamIds is list
         && data.active is bool;
@@ -118,10 +124,13 @@ service cloud.firestore {
 
     match /users/{phone} {
       // Everyone can read their own profile (the app needs it right after
-      // login, and to find out it doesn't exist yet). A director can read the
-      // profiles in their company.
+      // login, and to find out it doesn't exist yet). A director or accountant
+      // can read the profiles in their company (the Teams tab shows each
+      // team's supervisors).
       allow read: if hasPhone()
-        && (myPhone() == phone || isDirectorOf(resource.data.companyId));
+        && (myPhone() == phone
+            || isDirectorOf(resource.data.companyId)
+            || isAccountantOf(resource.data.companyId));
 
       // Company set-up: a login with no profile creates its own director
       // profile in the same batch as the company it is creating. The company
@@ -139,27 +148,32 @@ service cloud.firestore {
         && getAfter(companyPath(request.resource.data.companyId))
              .data.createdBy == phone;
 
-      // A director adds managers to their own company by mobile number. The
-      // manager can log in with it straight away. A number that is already
-      // in the app (any company) would be an update, not a create, so it is
-      // refused.
+      // A director adds supervisors and accountants to their own company by
+      // mobile number. They can log in with it straight away. A number that is
+      // already in the app (any company) would be an update, not a create, so
+      // it is refused. Accountants have no teams (they see every team).
       allow create: if validUserFields(request.resource.data)
         && validPhone(phone)
         && request.resource.data.phone == phone
-        && request.resource.data.role == 'manager'
+        && request.resource.data.role in ['supervisor', 'accountant']
+        && (request.resource.data.role == 'supervisor'
+            || request.resource.data.teamIds.size() == 0)
         && request.resource.data.active == true
         && request.resource.data.createdAt == request.time
         && isDirectorOf(request.resource.data.companyId);
 
-      // A director edits a manager in their company (name, teams, active).
-      // The company, role, number and creation time can't change.
-      allow update: if resource.data.role == 'manager'
+      // A director edits a supervisor (name, teams, active) or an accountant
+      // (name, active) in their company. The company, role, number and
+      // creation time can't change.
+      allow update: if resource.data.role in ['supervisor', 'accountant']
         && isDirectorOf(resource.data.companyId)
         && validUserFields(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['name', 'teamIds', 'active']);
+             .hasOnly(['name', 'teamIds', 'active'])
+        && (resource.data.role == 'supervisor'
+            || request.resource.data.teamIds.size() == 0);
 
-      // Never deleted: managers are deactivated instead, so their past
+      // Never deleted: supervisors and accountants are deactivated instead, so their past
       // attendance entries keep a valid author.
       allow delete: if false;
     }
@@ -192,7 +206,7 @@ service cloud.firestore {
 
       allow delete: if false;
 
-      // Teams: only a name. Everyone in the company can read them (managers
+      // Teams: only a name. Everyone in the company can read them (supervisors
       // see which teams a colleague works in).
       match /teams/{teamId} {
         allow read: if isActiveMemberOf(companyId);
@@ -208,7 +222,7 @@ service cloud.firestore {
       }
 
       // Employees. The document id is the Emp ID, so Emp IDs are unique in
-      // the company. Every active member can see the staff list (managers
+      // the company. Every active member can see the staff list (supervisors
       // put people from it on their teams' monthly lists, below), but only
       // the director adds employees, changes their details or deactivates
       // them.
@@ -242,7 +256,7 @@ service cloud.firestore {
       }
 
       // Rosters: who works in a team for a month (rosters/{teamId}_{yyyy-MM}).
-      // A month without one uses the latest earlier month's list. Managers
+      // A month without one uses the latest earlier month's list. Supervisors
       // change only their own teams' lists, and only around this month (one
       // month either side, which also covers the time-zone gap at month
       // ends); older lists are the director's to correct.
@@ -263,9 +277,9 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/companies/$(companyId)/teams/$(data.teamId));
         }
 
-        function managerMayEdit(data) {
+        function supervisorMayEdit(data) {
           return isActiveMemberOf(companyId)
-            && isManager()
+            && isSupervisor()
             && data.teamId in me().teamIds
             && monthNumber(data.month)
                  >= request.time.year() * 12 + request.time.month() - 1
@@ -275,14 +289,14 @@ service cloud.firestore {
 
         allow read: if isActiveMemberOf(companyId);
         allow create, update: if validRoster(request.resource.data)
-          && (isDirectorOf(companyId) || managerMayEdit(request.resource.data));
+          && (isDirectorOf(companyId) || supervisorMayEdit(request.resource.data));
         allow delete: if false;
       }
 
       // Attendance: one sheet per team per day
       // (attendance/{teamId}_{yyyy-MM-dd}), with an entry per employee.
-      // Every member can read all sheets: a manager needs the other teams'
-      // sheets to see who was lent to them for the day. Managers save only
+      // Every member can read all sheets: a supervisor needs the other teams'
+      // sheets to see who was lent to them for the day. Supervisors save only
       // their own teams' sheets, for today and the company's edit window
       // before it; older days are the director's to correct.
       match /attendance/{sheetId} {
@@ -309,19 +323,19 @@ service cloud.firestore {
 
         // The dates are the phone's local dates, so a day either side is
         // allowed for the time-zone gap.
-        function managerMayEdit(data) {
+        function supervisorMayEdit(data) {
           return isActiveMemberOf(companyId)
-            && isManager()
+            && isSupervisor()
             && data.teamId in me().teamIds
             && dayOf(data.date) <= request.time + duration.value(1, 'd')
             && dayOf(data.date) >= request.time - duration.value(
-                 get(companyPath(companyId)).data.settings.managerEditDays + 1,
+                 get(companyPath(companyId)).data.settings.supervisorEditDays + 1,
                  'd');
         }
 
         allow read: if isActiveMemberOf(companyId);
         allow create, update: if validSheet(request.resource.data)
-          && (isDirectorOf(companyId) || managerMayEdit(request.resource.data));
+          && (isDirectorOf(companyId) || supervisorMayEdit(request.resource.data));
         // Kept for the monthly report; a sheet is corrected, not deleted.
         allow delete: if false;
       }

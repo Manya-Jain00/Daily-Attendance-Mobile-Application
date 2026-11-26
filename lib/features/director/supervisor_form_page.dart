@@ -9,47 +9,60 @@ import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../auth/form_validators.dart';
 
-/// Director: add a manager (name, mobile number, teams), or edit one (name,
+/// Director: add a supervisor (name, mobile number, teams), or edit one (name,
 /// teams, active). The number is their login, so it can't be changed here.
-class ManagerFormPage extends StatefulWidget {
-  const ManagerFormPage({
+///
+/// With [role] [UserRole.accountant] it adds or edits an accountant the same
+/// way, without teams: an accountant sees every team, view only.
+class SupervisorFormPage extends StatefulWidget {
+  const SupervisorFormPage({
     super.key,
     required this.repository,
     required this.teams,
-    required this.managers,
-    this.manager,
+    required this.people,
+    this.supervisor,
+    this.role = UserRole.supervisor,
   });
 
   final CompanyRepository repository;
   final List<Team> teams;
 
-  /// Everyone already added, to catch a number that's already in the
-  /// company before asking the server.
-  final List<AppUser> managers;
+  /// Everyone already added (supervisors and accountants), to catch a number
+  /// that's already in the company before asking the server.
+  final List<AppUser> people;
 
-  /// The manager being edited, or null when adding one.
-  final AppUser? manager;
+  /// The person being edited, or null when adding one.
+  final AppUser? supervisor;
+
+  /// [UserRole.supervisor] or [UserRole.accountant].
+  final UserRole role;
 
   @override
-  State<ManagerFormPage> createState() => _ManagerFormPageState();
+  State<SupervisorFormPage> createState() => _SupervisorFormPageState();
 }
 
-class _ManagerFormPageState extends State<ManagerFormPage> {
+class _SupervisorFormPageState extends State<SupervisorFormPage> {
   final _formKey = GlobalKey<FormState>();
   late final _nameController = TextEditingController(
-    text: widget.manager?.name,
+    text: widget.supervisor?.name,
   );
   final _phoneController = TextEditingController();
 
-  /// Kept in the order of [ManagerFormPage.teams], plus any ids the manager
+  /// Kept in the order of [SupervisorFormPage.teams], plus any ids the supervisor
   /// has that this list doesn't know about, so saving never drops them.
-  late final Set<String> _teamIds = {...?widget.manager?.teamIds};
-  late bool _active = widget.manager?.active ?? true;
+  late final Set<String> _teamIds = {...?widget.supervisor?.teamIds};
+  late bool _active = widget.supervisor?.active ?? true;
 
   bool _busy = false;
   String? _error;
 
-  bool get _adding => widget.manager == null;
+  bool get _adding => widget.supervisor == null;
+
+  bool get _isAccountant => widget.role == UserRole.accountant;
+
+  /// "supervisor" or "accountant", for the screen's wording.
+  String get _roleName => _isAccountant ? 'accountant' : 'supervisor';
+  String get _roleTitle => _isAccountant ? 'Accountant' : 'Supervisor';
 
   @override
   void dispose() {
@@ -62,8 +75,11 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
     final problem = validatePhone(value);
     if (problem != null) return problem;
     final phone = PhoneNumber.normalize(value!);
-    final taken = widget.managers.any((m) => m.phone == phone);
-    return taken ? 'A manager with this number is already added' : null;
+    final taken = widget.people.where((m) => m.phone == phone).firstOrNull;
+    if (taken == null) return null;
+    return taken.role == UserRole.accountant
+        ? 'An accountant with this number is already added'
+        : 'A supervisor with this number is already added';
   }
 
   List<String> get _orderedTeamIds => [
@@ -75,19 +91,19 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
   Future<void> _save() async {
     if (_busy || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    final manager = widget.manager;
+    final supervisor = widget.supervisor;
 
-    if (manager != null) {
+    if (supervisor != null) {
       final unchanged =
-          _nameController.text.trim() == manager.name &&
-          _active == manager.active &&
-          _teamIds.length == manager.teamIds.length &&
-          _teamIds.containsAll(manager.teamIds);
+          _nameController.text.trim() == supervisor.name &&
+          _active == supervisor.active &&
+          _teamIds.length == supervisor.teamIds.length &&
+          _teamIds.containsAll(supervisor.teamIds);
       if (unchanged) {
         Navigator.pop(context);
         return;
       }
-      if (manager.active && !_active && !await _confirmDeactivate()) return;
+      if (supervisor.active && !_active && !await _confirmDeactivate()) return;
     }
 
     setState(() {
@@ -95,18 +111,32 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
       _error = null;
     });
     try {
-      if (manager == null) {
-        await widget.repository.addManager(
-          name: _nameController.text,
-          phone: PhoneNumber.normalize(_phoneController.text)!,
-          teamIds: _orderedTeamIds,
-        );
+      if (supervisor == null) {
+        final phone = PhoneNumber.normalize(_phoneController.text)!;
+        if (_isAccountant) {
+          await widget.repository.addAccountant(
+            name: _nameController.text,
+            phone: phone,
+          );
+        } else {
+          await widget.repository.addSupervisor(
+            name: _nameController.text,
+            phone: phone,
+            teamIds: _orderedTeamIds,
+          );
+        }
         if (!mounted) return;
         setState(() => _busy = false);
         await _showLoginDetails();
+      } else if (_isAccountant) {
+        await widget.repository.updateAccountant(
+          supervisor.phone,
+          name: _nameController.text,
+          active: _active,
+        );
       } else {
-        await widget.repository.updateManager(
-          manager.phone,
+        await widget.repository.updateSupervisor(
+          supervisor.phone,
           name: _nameController.text,
           teamIds: _orderedTeamIds,
           active: _active,
@@ -124,7 +154,7 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Deactivate ${widget.manager!.name}?'),
+        title: Text('Deactivate ${widget.supervisor!.name}?'),
         content: const Text(
           "They will be logged out and can't use the app until you turn "
           'them back on. Their past attendance entries are kept.',
@@ -159,7 +189,7 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Manager added'),
+        title: Text('$_roleTitle added'),
         content: Text(
           '$name can now log in with $phone. The app sends them a code by '
           'SMS each time they log in on a new phone.',
@@ -190,9 +220,11 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final manager = widget.manager;
+    final supervisor = widget.supervisor;
     return Scaffold(
-      appBar: BrandAppBar(title: _adding ? 'Add manager' : 'Edit manager'),
+      appBar: BrandAppBar(
+        title: _adding ? 'Add $_roleName' : 'Edit $_roleName',
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -203,14 +235,14 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
               enabled: !_busy,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
-              validator: validateName("Enter the manager's name"),
+              validator: validateName("Enter the $_roleName's name"),
               decoration: const InputDecoration(
                 labelText: 'Name',
                 prefixIcon: Icon(Icons.person_outline),
               ),
             ),
             const SizedBox(height: 16),
-            if (manager == null)
+            if (supervisor == null)
               TextFormField(
                 controller: _phoneController,
                 enabled: !_busy,
@@ -233,49 +265,61 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
                 margin: EdgeInsets.zero,
                 child: ListTile(
                   leading: const Icon(Icons.phone_android_outlined),
-                  title: Text(PhoneNumber.format(manager.phone)),
+                  title: Text(PhoneNumber.format(supervisor.phone)),
                   subtitle: const Text('Mobile number · their login'),
                 ),
               ),
-            const SizedBox(height: 24),
-            Text('Teams', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              widget.teams.isEmpty
-                  ? 'No teams yet. Add them in the Teams tab, then come back '
-                        'to assign them.'
-                  : 'The teams this manager marks attendance for.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            if (_isAccountant) ...[
+              const SizedBox(height: 16),
+              Text(
+                'An accountant sees every team, the dashboard, employee '
+                "history and the reports (with the Excel file), but can't "
+                'change anything.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final team in widget.teams)
-                  FilterChip(
-                    label: Text(team.name),
-                    selected: _teamIds.contains(team.id),
-                    onSelected: _busy
-                        ? null
-                        : (on) => setState(
-                            () => on
-                                ? _teamIds.add(team.id)
-                                : _teamIds.remove(team.id),
-                          ),
-                  ),
-              ],
-            ),
-            if (manager != null) ...[
+            ] else ...[
+              const SizedBox(height: 24),
+              Text('Teams', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text(
+                widget.teams.isEmpty
+                    ? 'No teams yet. Add them in the Teams tab, then come back '
+                          'to assign them.'
+                    : 'The teams this supervisor marks attendance for.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final team in widget.teams)
+                    FilterChip(
+                      label: Text(team.name),
+                      selected: _teamIds.contains(team.id),
+                      onSelected: _busy
+                          ? null
+                          : (on) => setState(
+                              () => on
+                                  ? _teamIds.add(team.id)
+                                  : _teamIds.remove(team.id),
+                            ),
+                    ),
+                ],
+              ),
+            ],
+            if (supervisor != null) ...[
               const SizedBox(height: 16),
               Card(
                 margin: EdgeInsets.zero,
                 child: SwitchListTile(
                   title: const Text('Active'),
-                  subtitle: const Text(
-                    "Inactive managers can't log in to the app.",
+                  subtitle: Text(
+                    "Inactive ${_roleName}s can't log in to the app.",
                   ),
                   value: _active,
                   onChanged: _busy ? null : (v) => setState(() => _active = v),
@@ -294,7 +338,7 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
                       dimension: 24,
                       child: CircularProgressIndicator(strokeWidth: 2.5),
                     )
-                  : Text(_adding ? 'Add manager' : 'Save changes'),
+                  : Text(_adding ? 'Add $_roleName' : 'Save changes'),
             ),
           ],
         ),

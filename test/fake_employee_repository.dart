@@ -10,7 +10,7 @@ import 'package:daily_attendance/core/models/month.dart';
 import 'package:daily_attendance/core/models/roster.dart';
 
 /// In-memory [EmployeeRepository] for tests. [teams] are the whole
-/// company's; [myTeamIds] are the manager's own.
+/// company's; [myTeamIds] are the supervisor's own.
 class FakeEmployeeRepository implements EmployeeRepository {
   final teams = <Team>[];
   final employees = <Employee>[];
@@ -21,6 +21,9 @@ class FakeEmployeeRepository implements EmployeeRepository {
 
   @override
   bool isDirector = false;
+
+  @override
+  bool isAccountant = false;
 
   final _changes = StreamController<void>.broadcast();
 
@@ -136,7 +139,7 @@ class FakeEmployeeRepository implements EmployeeRepository {
           teamId: teamId,
           date: date,
           entries: {...entries},
-          markedBy: 'manager-1',
+          markedBy: 'supervisor-1',
         ),
       );
     _changed();

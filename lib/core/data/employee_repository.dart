@@ -8,22 +8,26 @@ import '../models/employee.dart';
 import '../models/month.dart';
 import '../models/roster.dart';
 
-/// What a manager reads and changes: the company's teams, its employees,
+/// What a supervisor reads and changes: the company's teams, its employees,
 /// each team's monthly list of people and the daily attendance. The director's
 /// dashboard opens one too, and then sees and corrects every team.
 ///
-/// Every manager can see the whole staff list (to put someone from another
+/// Every supervisor can see the whole staff list (to put someone from another
 /// team on their own list), but can only change *their own* teams' lists.
 ///
 /// Streams update live. Methods throw [DataFailure] (from
 /// `company_repository.dart`) with a message that can be shown as is.
 abstract class EmployeeRepository {
-  /// The teams this manager looks after.
+  /// The teams this supervisor looks after.
   List<String> get myTeamIds;
 
   /// Opened for the director: every team is theirs, and any day up to today can
   /// be corrected (no edit window).
   bool get isDirector;
+
+  /// Opened for an accountant: every team is shown, like the director's, but
+  /// nothing can be changed.
+  bool get isAccountant;
 
   /// Every team in the company, sorted by name.
   Stream<List<Team>> watchTeams();
@@ -75,7 +79,7 @@ abstract class EmployeeRepository {
   );
 }
 
-/// Opens the [EmployeeRepository] for a signed-in manager.
+/// Opens the [EmployeeRepository] for a signed-in supervisor.
 typedef EmployeeRepositoryFactory = EmployeeRepository Function(AppUser user);
 
 /// Makes the [EmployeeRepositoryFactory] available to every screen, so tests

@@ -9,14 +9,14 @@ import 'attendance_page.dart';
 import 'employees_page.dart';
 import 'past_days_page.dart';
 
-class ManagerHomeScreen extends StatefulWidget {
-  const ManagerHomeScreen({super.key});
+class SupervisorHomeScreen extends StatefulWidget {
+  const SupervisorHomeScreen({super.key});
 
   @override
-  State<ManagerHomeScreen> createState() => _ManagerHomeScreenState();
+  State<SupervisorHomeScreen> createState() => _SupervisorHomeScreenState();
 }
 
-class _ManagerHomeScreenState extends State<ManagerHomeScreen> {
+class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
   EmployeeRepository? _repository;
   String? _openedFor;
   List<String> _openedTeams = const [];
@@ -24,7 +24,7 @@ class _ManagerHomeScreenState extends State<ManagerHomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reopened when the director changes this manager's teams, so the team list
+    // Reopened when the director changes this supervisor's teams, so the team list
     // follows. Kept while signing out, so the pages don't flash empty.
     final session = AuthScope.of(context).session;
     if (session is SignedIn &&

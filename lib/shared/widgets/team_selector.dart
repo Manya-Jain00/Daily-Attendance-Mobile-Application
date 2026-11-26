@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../core/models/company.dart';
 
-/// Picks which of the manager's teams a screen shows. With one team there's
+/// Picks which of the supervisor's teams a screen shows. With one team there's
 /// nothing to pick, so it just names that team.
 class TeamSelector extends StatelessWidget {
   const TeamSelector({

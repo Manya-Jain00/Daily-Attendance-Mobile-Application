@@ -42,7 +42,7 @@ void main() {
   }
 
   /// Taps a button by its text, preferring a real button over a title with
-  /// the same words (e.g. "Add manager" is both).
+  /// the same words (e.g. "Add supervisor" is both).
   Future<void> tapButton(WidgetTester tester, String text) async {
     // Includes buttons scrolled out of view; ensureVisible brings them back.
     final label = find.text(text, skipOffstage: false);
@@ -59,6 +59,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// The People tab's "Add" asks which kind of person to add.
+  Future<void> startAdding(WidgetTester tester, String kind) async {
+    await tapButton(tester, 'Add');
+    await tester.tap(find.text(kind));
+    await tester.pumpAndSettle();
+  }
+
   setUp(() => repo = FakeCompanyRepository());
 
   group('teams', () {
@@ -72,7 +79,7 @@ void main() {
 
       expect(repo.teams.map((t) => t.name), ['Marketing']);
       expect(find.text('Marketing'), findsOneWidget);
-      expect(find.text('No manager yet'), findsOneWidget);
+      expect(find.text('No supervisor yet'), findsOneWidget);
     });
 
     testWidgets('two teams cannot share a name', (tester) async {
@@ -92,7 +99,7 @@ void main() {
 
     testWidgets('rename and delete a team', (tester) async {
       repo.teams.add(const Team(id: 't1', name: 'Legl'));
-      repo.managers.add(_manager('m1', 'Ravi', teamIds: ['t1']));
+      repo.supervisors.add(_supervisor('m1', 'Ravi', teamIds: ['t1']));
       await openTab(tester, 'Teams');
       expect(find.text('Ravi'), findsOneWidget);
 
@@ -106,11 +113,11 @@ void main() {
       await tester.tap(find.byTooltip('Options for Legal'));
       await tester.pumpAndSettle();
       await tapButton(tester, 'Delete');
-      expect(find.textContaining('Its manager'), findsOneWidget);
+      expect(find.textContaining('Its supervisor'), findsOneWidget);
       await tapButton(tester, 'Delete');
 
       expect(repo.teams, isEmpty);
-      expect(repo.managers.single.teamIds, isEmpty);
+      expect(repo.supervisors.single.teamIds, isEmpty);
     });
 
     testWidgets('a team with employees cannot be deleted', (tester) async {
@@ -128,32 +135,32 @@ void main() {
     });
   });
 
-  group('managers', () {
-    testWidgets('the director adds a manager by their mobile number', (
+  group('supervisors', () {
+    testWidgets('the director adds a supervisor by their mobile number', (
       tester,
     ) async {
       repo.teams
         ..add(const Team(id: 't1', name: 'Sales'))
         ..add(const Team(id: 't2', name: 'Legal'));
-      await openTab(tester, 'Managers');
-      expect(find.text('No managers yet'), findsOneWidget);
+      await openTab(tester, 'People');
+      expect(find.text('No one added yet'), findsOneWidget);
 
-      await tapButton(tester, 'Add manager');
+      await startAdding(tester, 'Supervisor');
       await fill(tester, 'Name', 'Ravi Kumar');
       await fill(tester, 'Mobile number', '98765 43210');
       await tester.tap(find.widgetWithText(FilterChip, 'Sales'));
       await tester.tap(find.widgetWithText(FilterChip, 'Legal'));
       await tester.pump();
-      await tapButton(tester, 'Add manager');
+      await tapButton(tester, 'Add supervisor');
 
-      expect(find.text('Manager added'), findsOneWidget);
+      expect(find.text('Supervisor added'), findsOneWidget);
       expect(
         find.textContaining('Ravi Kumar can now log in with +91 98765 43210'),
         findsOneWidget,
       );
       await tapButton(tester, 'Done');
 
-      final added = repo.managers.single;
+      final added = repo.supervisors.single;
       expect(added.name, 'Ravi Kumar');
       expect(added.phone, '+919876543210');
       expect(added.teamIds, ['t2', 't1']);
@@ -162,33 +169,33 @@ void main() {
     });
 
     testWidgets('checks the number', (tester) async {
-      repo.managers.add(_manager('m1', 'Ravi'));
-      await openTab(tester, 'Managers');
+      repo.supervisors.add(_supervisor('m1', 'Ravi'));
+      await openTab(tester, 'People');
 
-      await tapButton(tester, 'Add manager');
+      await startAdding(tester, 'Supervisor');
       await fill(tester, 'Name', 'Another Ravi');
       await fill(tester, 'Mobile number', '12345');
-      await tapButton(tester, 'Add manager');
+      await tapButton(tester, 'Add supervisor');
       expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
 
       // Already in the company, typed another way.
       await fill(tester, 'Mobile number', '+91 98000 00001');
-      await tapButton(tester, 'Add manager');
+      await tapButton(tester, 'Add supervisor');
       expect(
-        find.text('A manager with this number is already added'),
+        find.text('A supervisor with this number is already added'),
         findsOneWidget,
       );
-      expect(repo.managers, hasLength(1));
+      expect(repo.supervisors, hasLength(1));
     });
 
-    testWidgets('the director edits teams and deactivates a manager', (
+    testWidgets('the director edits teams and deactivates a supervisor', (
       tester,
     ) async {
       repo.teams
         ..add(const Team(id: 't1', name: 'Sales'))
         ..add(const Team(id: 't2', name: 'Legal'));
-      repo.managers.add(_manager('m1', 'Ravi', teamIds: ['t1']));
-      await openTab(tester, 'Managers');
+      repo.supervisors.add(_supervisor('m1', 'Ravi', teamIds: ['t1']));
+      await openTab(tester, 'People');
 
       await tester.tap(find.text('Ravi'));
       await tester.pumpAndSettle();
@@ -203,10 +210,77 @@ void main() {
       expect(find.text('Deactivate Ravi?'), findsOneWidget);
       await tapButton(tester, 'Deactivate');
 
-      final edited = repo.managers.single;
+      final edited = repo.supervisors.single;
       expect(edited.active, isFalse);
       // In the order the teams are listed (by name).
       expect(edited.teamIds, ['t2', 't1']);
+      expect(find.text('Inactive'), findsOneWidget);
+    });
+  });
+
+  group('accountants', () {
+    testWidgets('the director adds an accountant by their mobile number', (
+      tester,
+    ) async {
+      repo.teams.add(const Team(id: 't1', name: 'Sales'));
+      repo.supervisors.add(_supervisor('m1', 'Ravi', teamIds: ['t1']));
+      await openTab(tester, 'People');
+
+      await startAdding(tester, 'Accountant');
+      expect(find.text('Add accountant'), findsWidgets);
+      // An accountant sees every team, so there are none to pick.
+      expect(find.byType(FilterChip), findsNothing);
+
+      // A supervisor's number can't be used again.
+      await fill(tester, 'Name', 'Meena');
+      await fill(tester, 'Mobile number', '98000 00001');
+      await tapButton(tester, 'Add accountant');
+      expect(
+        find.text('A supervisor with this number is already added'),
+        findsOneWidget,
+      );
+
+      await fill(tester, 'Mobile number', '98111 22233');
+      await tapButton(tester, 'Add accountant');
+      expect(find.text('Accountant added'), findsOneWidget);
+      await tapButton(tester, 'Done');
+
+      final added = repo.accountants.single;
+      expect(added.name, 'Meena');
+      expect(added.phone, '+919811122233');
+      expect(added.role, UserRole.accountant);
+      expect(added.teamIds, isEmpty);
+      expect(repo.supervisors, hasLength(1));
+      // Listed in its own section.
+      expect(find.text('Accountants'), findsOneWidget);
+      expect(find.text('+91 98111 22233 · View only'), findsOneWidget);
+    });
+
+    testWidgets('the director renames and deactivates an accountant', (
+      tester,
+    ) async {
+      repo.accountants.add(
+        const AppUser(
+          phone: '+919811122233',
+          companyId: 'company-1',
+          role: UserRole.accountant,
+          name: 'Meena',
+        ),
+      );
+      await openTab(tester, 'People');
+
+      await tester.tap(find.text('Meena'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit accountant'), findsOneWidget);
+      await fill(tester, 'Name', 'Meena Shah');
+      await tester.tap(find.byType(Switch));
+      await tester.pump();
+      await tapButton(tester, 'Save changes');
+      await tapButton(tester, 'Deactivate');
+
+      final edited = repo.accountants.single;
+      expect(edited.name, 'Meena Shah');
+      expect(edited.active, isFalse);
       expect(find.text('Inactive'), findsOneWidget);
     });
   });
@@ -225,7 +299,7 @@ void main() {
       await tapButton(tester, 'Save changes');
 
       expect(repo.company.name, 'Acme Pvt Ltd');
-      expect(repo.company.settings.managerEditDays, 8);
+      expect(repo.company.settings.supervisorEditDays, 8);
       expect(repo.company.settings.halfDayBelowHours, 3.5);
       expect(find.text('Settings saved'), findsOneWidget);
     });
@@ -256,11 +330,14 @@ void main() {
 }
 
 /// [id] is 'm1' to 'm9', giving +919800000001 to +919800000009.
-AppUser _manager(String id, String name, {List<String> teamIds = const []}) =>
-    AppUser(
-      phone: '+91980000000${id.substring(1)}',
-      companyId: 'company-1',
-      role: UserRole.manager,
-      name: name,
-      teamIds: teamIds,
-    );
+AppUser _supervisor(
+  String id,
+  String name, {
+  List<String> teamIds = const [],
+}) => AppUser(
+  phone: '+91980000000${id.substring(1)}',
+  companyId: 'company-1',
+  role: UserRole.supervisor,
+  name: name,
+  teamIds: teamIds,
+);

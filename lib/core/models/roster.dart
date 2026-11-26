@@ -4,7 +4,7 @@ import 'month.dart';
 /// `companies/{companyId}/rosters/{teamId}_{yyyy-MM}`.
 ///
 /// The daily attendance sheet lists these people every day of the month, so
-/// the manager doesn't pick the team again each day.
+/// the supervisor doesn't pick the team again each day.
 class Roster {
   const Roster({
     required this.teamId,
