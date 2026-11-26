@@ -3,19 +3,15 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/data/company_repository.dart';
 import '../../core/models/app_user.dart';
 import '../../core/models/company.dart';
+import '../../core/phone_number.dart';
 import '../../shared/widgets/load_state.dart';
 import 'manager_form_page.dart';
 
-/// CEO: the company's managers, with their teams. Tap one to edit them.
+/// Director: the company's managers, with their teams. Tap one to edit them.
 class ManagersPage extends StatefulWidget {
-  const ManagersPage({
-    super.key,
-    required this.repository,
-    required this.companyCode,
-  });
+  const ManagersPage({super.key, required this.repository});
 
   final CompanyRepository repository;
-  final String companyCode;
 
   @override
   State<ManagersPage> createState() => _ManagersPageState();
@@ -30,7 +26,6 @@ class _ManagersPageState extends State<ManagersPage> {
       MaterialPageRoute<void>(
         builder: (_) => ManagerFormPage(
           repository: widget.repository,
-          companyCode: widget.companyCode,
           teams: teams,
           managers: managers,
           manager: manager,
@@ -72,9 +67,9 @@ class _ManagersPageState extends State<ManagersPage> {
         icon: Icons.badge_outlined,
         title: 'No managers yet',
         message: teams.isEmpty
-            ? 'Add your teams first (Teams tab), then add managers here and '
-                  'give each one a username and PIN to log in.'
-            : 'Add managers and give each one a username and PIN to log in.',
+            ? 'Add your teams first (Teams tab), then add managers here by '
+                  'their mobile number. They log in with it.'
+            : 'Add managers by their mobile number. They log in with it.',
       );
     }
     final teamNames = {for (final t in teams) t.id: t.name};
@@ -110,7 +105,7 @@ class _ManagersPageState extends State<ManagersPage> {
               style: manager.active ? null : TextStyle(color: muted),
             ),
             subtitle: Text(
-              '${manager.username} · '
+              '${PhoneNumber.format(manager.phone)} · '
               '${managedTeams.isEmpty ? 'No teams' : managedTeams.join(', ')}',
             ),
             trailing: manager.active

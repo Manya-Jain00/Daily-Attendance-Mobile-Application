@@ -1,34 +1,30 @@
-import 'dart:math';
-
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/data/company_repository.dart';
-import '../../core/manager_login.dart';
 import '../../core/models/app_user.dart';
 import '../../core/models/company.dart';
+import '../../core/phone_number.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/error_banner.dart';
 import '../auth/form_validators.dart';
 
-/// CEO: add a manager (name, username, PIN, teams), or edit one (name,
-/// teams, active). The username and PIN can't be changed here.
+/// Director: add a manager (name, mobile number, teams), or edit one (name,
+/// teams, active). The number is their login, so it can't be changed here.
 class ManagerFormPage extends StatefulWidget {
   const ManagerFormPage({
     super.key,
     required this.repository,
-    required this.companyCode,
     required this.teams,
     required this.managers,
     this.manager,
   });
 
   final CompanyRepository repository;
-  final String companyCode;
   final List<Team> teams;
 
-  /// Everyone already added, to catch a taken username before asking the
-  /// server.
+  /// Everyone already added, to catch a number that's already in the
+  /// company before asking the server.
   final List<AppUser> managers;
 
   /// The manager being edited, or null when adding one.
@@ -43,8 +39,7 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
   late final _nameController = TextEditingController(
     text: widget.manager?.name,
   );
-  final _usernameController = TextEditingController();
-  final _pinController = TextEditingController();
+  final _phoneController = TextEditingController();
 
   /// Kept in the order of [ManagerFormPage.teams], plus any ids the manager
   /// has that this list doesn't know about, so saving never drops them.
@@ -59,25 +54,16 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
   @override
   void dispose() {
     _nameController.dispose();
-    _usernameController.dispose();
-    _pinController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
-  String? _validateUsername(String? value) {
-    final problem = validateNewUsername(value);
+  String? _validatePhone(String? value) {
+    final problem = validatePhone(value);
     if (problem != null) return problem;
-    final username = ManagerLogin.normalizeUsername(value!);
-    final taken = widget.managers.any((m) => m.username == username);
-    return taken ? 'This username is already taken' : null;
-  }
-
-  void _randomPin() {
-    final random = Random.secure();
-    _pinController.text = List.generate(
-      ManagerLogin.minPinLength,
-      (_) => random.nextInt(10),
-    ).join();
+    final phone = PhoneNumber.normalize(value!);
+    final taken = widget.managers.any((m) => m.phone == phone);
+    return taken ? 'A manager with this number is already added' : null;
   }
 
   List<String> get _orderedTeamIds => [
@@ -112,8 +98,7 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
       if (manager == null) {
         await widget.repository.addManager(
           name: _nameController.text,
-          username: _usernameController.text,
-          pin: _pinController.text,
+          phone: PhoneNumber.normalize(_phoneController.text)!,
           teamIds: _orderedTeamIds,
         );
         if (!mounted) return;
@@ -121,7 +106,7 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
         await _showLoginDetails();
       } else {
         await widget.repository.updateManager(
-          manager.uid,
+          manager.phone,
           name: _nameController.text,
           teamIds: _orderedTeamIds,
           active: _active,
@@ -160,66 +145,45 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
     return sure == true;
   }
 
-  /// The PIN isn't stored anywhere readable, so this is the CEO's only
-  /// chance to see it.
+  /// Tells the director what to pass on: there's no password, just the
+  /// number.
   Future<void> _showLoginDetails() {
     final name = _nameController.text.trim();
-    final details =
-        'Daily Attendance login for $name\n'
-        'Company code: ${widget.companyCode}\n'
-        'Username: ${ManagerLogin.normalizeUsername(_usernameController.text)}\n'
-        'PIN: ${_pinController.text}';
+    final phone = PhoneNumber.format(
+      PhoneNumber.normalize(_phoneController.text)!,
+    );
+    final message =
+        'You can now use the Daily Attendance app. Log in with your mobile '
+        'number $phone and the code that comes by SMS.';
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-        final theme = Theme.of(context);
-        return AlertDialog(
-          title: const Text('Manager added'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Give these login details to $name. Note the PIN now: it '
-                "can't be shown again.",
-              ),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: SelectableText(
-                  details.split('\n').skip(1).join('\n'),
-                  style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
-                ),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: const Text('Manager added'),
+        content: Text(
+          '$name can now log in with $phone. The app sends them a code by '
+          'SMS each time they log in on a new phone.',
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: message));
+              if (context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Message copied')));
+              }
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copy message'),
           ),
-          actions: [
-            TextButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: details));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Login details copied')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.copy_outlined),
-              label: const Text('Copy'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
-            ),
-          ],
-        );
-      },
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(64, 40)),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -246,49 +210,31 @@ class _ManagerFormPageState extends State<ManagerFormPage> {
               ),
             ),
             const SizedBox(height: 16),
-            if (manager == null) ...[
+            if (manager == null)
               TextFormField(
-                controller: _usernameController,
+                controller: _phoneController,
                 enabled: !_busy,
-                autocorrect: false,
-                enableSuggestions: false,
+                keyboardType: TextInputType.phone,
                 textInputAction: TextInputAction.next,
-                validator: _validateUsername,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s\-]')),
+                  LengthLimitingTextInputFormatter(16),
+                ],
+                validator: _validatePhone,
                 decoration: const InputDecoration(
-                  labelText: 'Username',
-                  helperText: 'They type this to log in, e.g. ravi',
-                  prefixIcon: Icon(Icons.alternate_email),
+                  labelText: 'Mobile number',
+                  helperText: 'They log in with this number',
+                  prefixText: '${PhoneNumber.defaultCountryCode} ',
+                  prefixIcon: Icon(Icons.phone_android_outlined),
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _pinController,
-                enabled: !_busy,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                maxLength: maxPinLength,
-                validator: validateNewPin,
-                decoration: InputDecoration(
-                  labelText: 'PIN',
-                  helperText:
-                      '${ManagerLogin.minPinLength} to $maxPinLength digits',
-                  prefixIcon: const Icon(Icons.pin_outlined),
-                  suffixIcon: IconButton(
-                    tooltip: 'Make a random PIN',
-                    icon: const Icon(Icons.casino_outlined),
-                    onPressed: _busy ? null : _randomPin,
-                  ),
-                ),
-              ),
-            ] else
+              )
+            else
               Card(
                 margin: EdgeInsets.zero,
                 child: ListTile(
-                  leading: const Icon(Icons.alternate_email),
-                  title: Text(manager.username),
-                  subtitle: Text(
-                    'Username · company code ${widget.companyCode}',
-                  ),
+                  leading: const Icon(Icons.phone_android_outlined),
+                  title: Text(PhoneNumber.format(manager.phone)),
+                  subtitle: const Text('Mobile number · their login'),
                 ),
               ),
             const SizedBox(height: 24),

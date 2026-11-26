@@ -12,7 +12,7 @@ import 'package:daily_attendance/core/models/day_value.dart';
 import 'package:daily_attendance/core/models/employee.dart';
 import 'package:daily_attendance/core/models/month.dart';
 import 'package:daily_attendance/core/models/roster.dart';
-import 'package:daily_attendance/features/ceo/reports_page.dart';
+import 'package:daily_attendance/features/director/reports_page.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -95,7 +95,7 @@ void main() {
   late FakeEmployeeRepository repo;
 
   setUp(() {
-    repo = FakeEmployeeRepository()..isCeo = true;
+    repo = FakeEmployeeRepository()..isDirector = true;
     repo.teams
       ..add(const Team(id: 'team-1', name: 'Sector 122'))
       ..add(const Team(id: 'team-2', name: 'Accounts'));

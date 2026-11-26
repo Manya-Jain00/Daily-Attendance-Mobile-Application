@@ -11,15 +11,14 @@ import '../../core/models/team_day.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
 import '../manager/attendance_page.dart';
-import 'company_code_card.dart';
 import 'employee_history_page.dart';
 
-/// CEO: how every team's day is going (today, or any earlier day), and the
+/// Director: how every team's day is going (today, or any earlier day), and the
 /// way into each team's full sheet and each employee's history.
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, required this.repository});
 
-  /// Opened for the CEO ([EmployeeRepository.isCeo]).
+  /// Opened for the director ([EmployeeRepository.isDirector]).
   final EmployeeRepository repository;
 
   @override
@@ -111,7 +110,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     children: [
-                      const CompanyCodeCard(margin: EdgeInsets.only(top: 16)),
+                      const SizedBox(height: 16),
                       _DateBar(
                         date: _date,
                         isToday: _picked == null,

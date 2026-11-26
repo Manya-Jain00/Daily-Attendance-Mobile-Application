@@ -32,7 +32,7 @@ void main() {
   late FakeEmployeeRepository repo;
 
   setUp(() {
-    repo = FakeEmployeeRepository()..isCeo = true;
+    repo = FakeEmployeeRepository()..isDirector = true;
     repo.teams
       ..add(const Team(id: 'team-1', name: 'Sales'))
       ..add(const Team(id: 'team-2', name: 'Accounts'));
@@ -108,7 +108,7 @@ void main() {
     });
   });
 
-  group('the CEO dashboard', () {
+  group('the director dashboard', () {
     Future<void> start(WidgetTester tester) async {
       tester.view
         ..physicalSize = const Size(360, 1400)
@@ -116,7 +116,7 @@ void main() {
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
         DailyAttendanceApp(
-          auth: FakeAuthService(initial: const SignedIn(ceoUser)),
+          auth: FakeAuthService(initial: const SignedIn(directorUser)),
           openCompany: (_) => FakeCompanyRepository(),
           openEmployees: (_) => repo,
         ),
@@ -172,7 +172,7 @@ void main() {
       expect(find.text('Not marked yet'), findsOneWidget);
     });
 
-    testWidgets('the CEO corrects a day older than the edit window', (
+    testWidgets('the director corrects a day older than the edit window', (
       tester,
     ) async {
       await start(tester);

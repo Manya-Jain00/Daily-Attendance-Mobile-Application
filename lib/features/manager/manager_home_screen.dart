@@ -24,13 +24,13 @@ class _ManagerHomeScreenState extends State<ManagerHomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reopened when the CEO changes this manager's teams, so the team list
+    // Reopened when the director changes this manager's teams, so the team list
     // follows. Kept while signing out, so the pages don't flash empty.
     final session = AuthScope.of(context).session;
     if (session is SignedIn &&
-        (session.user.uid != _openedFor ||
+        (session.user.phone != _openedFor ||
             !listEquals(session.user.teamIds, _openedTeams))) {
-      _openedFor = session.user.uid;
+      _openedFor = session.user.phone;
       _openedTeams = session.user.teamIds;
       _repository = EmployeeDataScope.of(context)(session.user);
     }

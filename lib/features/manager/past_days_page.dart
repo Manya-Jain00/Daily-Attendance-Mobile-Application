@@ -111,7 +111,7 @@ class _PastDaysPageState extends State<PastDaysPage> {
         icon: Icons.groups_outlined,
         title: 'No teams yet',
         message:
-            'You have not been given a team yet. Ask your CEO to assign you '
+            'You have not been given a team yet. Ask your director to assign you '
             'one.',
       );
     }
@@ -120,7 +120,7 @@ class _PastDaysPageState extends State<PastDaysPage> {
       return const EmptyState(
         icon: Icons.lock_outline,
         title: 'Only today can be marked',
-        message: 'Your CEO corrects earlier days.',
+        message: 'Your director corrects earlier days.',
       );
     }
     final days = [for (var i = 1; i <= editDays; i++) _today.addDays(-i)];
@@ -131,7 +131,7 @@ class _PastDaysPageState extends State<PastDaysPage> {
       children: [
         Text(
           'You can correct the last $editDays '
-          '${editDays == 1 ? 'day' : 'days'}. Older days: ask your CEO.',
+          '${editDays == 1 ? 'day' : 'days'}. Older days: ask your director.',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

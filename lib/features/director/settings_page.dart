@@ -7,7 +7,7 @@ import '../../core/models/company.dart';
 import '../../shared/widgets/load_state.dart';
 import '../auth/form_validators.dart';
 
-/// CEO: the company name and office rules (office hours, late time, half-day
+/// Director: the company name and office rules (office hours, late time, half-day
 /// rule, manager edit window).
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.repository});
@@ -23,7 +23,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _nameController = TextEditingController();
   late final StreamSubscription<Company> _sub;
 
-  /// What's saved on the server, and the CEO's unsaved edits to it.
+  /// What's saved on the server, and the director's unsaved edits to it.
   Company? _saved;
   CompanySettings? _draft;
   Object? _loadError;
@@ -38,7 +38,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final hadEdits = _dirty;
         _saved = company;
         _loadError = null;
-        // Don't throw away the CEO's edits when the saved copy changes.
+        // Don't throw away the director's edits when the saved copy changes.
         if (!hadEdits) {
           _draft = company.settings;
           _nameController.text = company.name;

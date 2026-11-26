@@ -6,7 +6,7 @@ import '../../core/models/company.dart';
 import '../../shared/widgets/load_state.dart';
 import '../auth/form_validators.dart';
 
-/// CEO: create, rename and delete teams, and see who manages each one.
+/// Director: create, rename and delete teams, and see who manages each one.
 class TeamsPage extends StatefulWidget {
   const TeamsPage({super.key, required this.repository});
 

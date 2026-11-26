@@ -1,8 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 
-import '../manager_login.dart';
 import '../models/app_user.dart';
 import '../models/company.dart';
 import '../models/month.dart';
@@ -10,16 +7,16 @@ import '../models/roster.dart';
 import 'company_repository.dart';
 import 'firestore_helpers.dart';
 
-/// [CompanyRepository] backed by Firestore, for the company of [ceo].
+/// [CompanyRepository] backed by Firestore, for the company of [director].
 class FirestoreCompanyRepository implements CompanyRepository {
-  FirestoreCompanyRepository(this.ceo, {FirebaseFirestore? firestore})
+  FirestoreCompanyRepository(this.director, {FirebaseFirestore? firestore})
     : _db = firestore ?? FirebaseFirestore.instance;
 
-  final AppUser ceo;
+  final AppUser director;
   final FirebaseFirestore _db;
 
   DocumentReference<Map<String, dynamic>> get _company =>
-      _db.collection('companies').doc(ceo.companyId);
+      _db.collection('companies').doc(director.companyId);
 
   CollectionReference<Map<String, dynamic>> get _teams =>
       _company.collection('teams');
@@ -27,10 +24,10 @@ class FirestoreCompanyRepository implements CompanyRepository {
   CollectionReference<Map<String, dynamic>> get _users =>
       _db.collection('users');
 
-  /// Everyone in this company. The security rules only let a CEO list the
+  /// Everyone in this company. The security rules only let a director list the
   /// profiles of their own company, so the filter is required.
   Query<Map<String, dynamic>> get _companyUsers =>
-      _users.where('companyId', isEqualTo: ceo.companyId);
+      _users.where('companyId', isEqualTo: director.companyId);
 
   @override
   Stream<Company> watchCompany() => friendlyErrors(
@@ -110,89 +107,44 @@ class FirestoreCompanyRepository implements CompanyRepository {
     await batch.commit();
   });
 
-  /// Firebase can only create a login by signing in as it. Doing that on the
-  /// app's main connection would log the CEO out, so the manager's login is
-  /// made on a second, background connection to the same project.
-  ///
-  /// The profile is then written as the CEO. If that fails, the new login is
-  /// removed again so the username can be reused.
+  /// The profile is keyed by the number, so it's ready before the manager
+  /// ever logs in. The rules refuse a number that's already in the app (that
+  /// would be an update of someone else's profile).
   @override
   Future<void> addManager({
     required String name,
-    required String username,
-    required String pin,
+    required String phone,
     required List<String> teamIds,
   }) async {
-    final cleanUsername = ManagerLogin.normalizeUsername(username);
-    final email = ManagerLogin.email(
-      companyCode: ceo.companyCode,
-      username: cleanUsername,
-    );
-    final helperAuth = FirebaseAuth.instanceFor(app: await _helperApp());
-
-    final UserCredential credential;
     try {
-      credential = await helperAuth.createUserWithEmailAndPassword(
-        email: email,
-        password: pin,
-      );
-    } on FirebaseAuthException catch (e) {
-      throw DataFailure(switch (e.code) {
-        'email-already-in-use' =>
-          'The username "$cleanUsername" is already taken in your company. '
-              'Choose another.',
-        'weak-password' => 'Choose a longer PIN (at least 6 digits).',
-        'network-request-failed' =>
-          'No internet connection. Check your connection and try again.',
-        'too-many-requests' =>
-          'Too many attempts. Wait a few minutes and try again.',
-        _ => 'Could not create the login (${e.code}). Please try again.',
+      await _users.doc(phone).set({
+        'companyId': director.companyId,
+        'role': UserRole.manager.name,
+        'name': name.trim(),
+        'phone': phone,
+        'teamIds': teamIds,
+        'active': true,
+        'createdAt': FieldValue.serverTimestamp(),
       });
-    }
-
-    final newLogin = credential.user!;
-    try {
-      await guardFirestore(
-        () => _users.doc(newLogin.uid).set({
-          'companyId': ceo.companyId,
-          'companyCode': ceo.companyCode,
-          'role': UserRole.manager.name,
-          'name': name.trim(),
-          'username': cleanUsername,
-          'email': email,
-          'teamIds': teamIds,
-          'active': true,
-          'createdAt': FieldValue.serverTimestamp(),
-        }),
-      );
-    } catch (_) {
-      try {
-        await newLogin.delete();
-      } catch (_) {
-        // Left behind; the username stays taken until removed in the console.
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        throw const DataFailure(
+          'This number is already used in the app, by someone in your '
+          'company or another firm. Check the number.',
+        );
       }
-      rethrow;
-    } finally {
-      await helperAuth.signOut();
+      throw DataFailure(firestoreMessage(e));
     }
-  }
-
-  Future<FirebaseApp> _helperApp() async {
-    const name = 'manager-setup';
-    for (final app in Firebase.apps) {
-      if (app.name == name) return app;
-    }
-    return Firebase.initializeApp(name: name, options: _db.app.options);
   }
 
   @override
   Future<void> updateManager(
-    String uid, {
+    String phone, {
     required String name,
     required List<String> teamIds,
     required bool active,
   }) => guardFirestore(
-    () => _users.doc(uid).update({
+    () => _users.doc(phone).update({
       'name': name.trim(),
       'teamIds': teamIds,
       'active': active,

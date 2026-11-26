@@ -115,7 +115,7 @@ class AttendanceEntry {
   final String? workingIn;
 
   /// Same status and times with the hours and late flag worked out again
-  /// (e.g. after the CEO changed the late cutoff).
+  /// (e.g. after the director changed the late cutoff).
   AttendanceEntry recalculated(CompanySettings settings) =>
       AttendanceEntry.mark(
         status,

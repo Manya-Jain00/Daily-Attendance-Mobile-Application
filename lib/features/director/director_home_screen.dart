@@ -5,26 +5,26 @@ import '../../core/data/employee_repository.dart';
 import '../../shared/widgets/role_shell.dart';
 import '../auth/auth_scope.dart';
 import '../auth/auth_service.dart';
+import '../manager/employees_page.dart';
 import 'dashboard_page.dart';
 import 'managers_page.dart';
 import 'reports_page.dart';
 import 'settings_page.dart';
 import 'teams_page.dart';
 
-class CeoHomeScreen extends StatefulWidget {
-  const CeoHomeScreen({super.key});
+class DirectorHomeScreen extends StatefulWidget {
+  const DirectorHomeScreen({super.key});
 
   @override
-  State<CeoHomeScreen> createState() => _CeoHomeScreenState();
+  State<DirectorHomeScreen> createState() => _DirectorHomeScreenState();
 }
 
-class _CeoHomeScreenState extends State<CeoHomeScreen> {
+class _DirectorHomeScreenState extends State<DirectorHomeScreen> {
   CompanyRepository? _repository;
 
-  /// The same attendance data managers use, opened for the CEO, so the
+  /// The same attendance data managers use, opened for the director, so the
   /// dashboard sees and corrects every team.
   EmployeeRepository? _attendance;
-  String _companyCode = '';
   String? _openedFor;
 
   @override
@@ -32,9 +32,8 @@ class _CeoHomeScreenState extends State<CeoHomeScreen> {
     super.didChangeDependencies();
     // Kept while signing out, so the pages don't flash empty on the way out.
     final session = AuthScope.of(context).session;
-    if (session is SignedIn && session.user.uid != _openedFor) {
-      _openedFor = session.user.uid;
-      _companyCode = session.user.companyCode;
+    if (session is SignedIn && session.user.phone != _openedFor) {
+      _openedFor = session.user.phone;
       _repository = CompanyDataScope.of(context)(session.user);
       _attendance = EmployeeDataScope.of(context)(session.user);
     }
@@ -65,10 +64,19 @@ class _CeoHomeScreenState extends State<CeoHomeScreen> {
           page: TeamsPage(repository: repository),
         ),
         ShellTab(
+          label: 'Employees',
+          icon: Icons.people_outline,
+          selectedIcon: Icons.people,
+          page: EmployeesPage(
+            key: ObjectKey(attendance),
+            repository: attendance,
+          ),
+        ),
+        ShellTab(
           label: 'Managers',
           icon: Icons.badge_outlined,
           selectedIcon: Icons.badge,
-          page: ManagersPage(repository: repository, companyCode: _companyCode),
+          page: ManagersPage(repository: repository),
         ),
         ShellTab(
           label: 'Reports',

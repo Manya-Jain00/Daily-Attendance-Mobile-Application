@@ -14,14 +14,22 @@ import 'fake_employee_repository.dart';
 void main() {
   late FakeEmployeeRepository repo;
 
-  Future<void> openEmployees(WidgetTester tester) async {
+  /// Opens the Employees tab as the manager, or as the director (who sees
+  /// every team and is the only one who adds or changes employees).
+  Future<void> openEmployees(
+    WidgetTester tester, {
+    bool asDirector = false,
+  }) async {
     tester.view
       ..physicalSize = const Size(400, 1200)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    repo.isDirector = asDirector;
     await tester.pumpWidget(
       DailyAttendanceApp(
-        auth: FakeAuthService(initial: const SignedIn(managerUser)),
+        auth: FakeAuthService(
+          initial: SignedIn(asDirector ? directorUser : managerUser),
+        ),
         openCompany: (_) => FakeCompanyRepository(),
         openEmployees: (_) => repo,
       ),
@@ -70,23 +78,28 @@ void main() {
   void onList(String teamId, Month month, List<String> empIds) =>
       repo.rosters.add(Roster(teamId: teamId, month: month, empIds: empIds));
 
+  /// The director's Add button offers a new employee or someone already in
+  /// the company.
   Future<void> startAdding(WidgetTester tester, String choice) async {
     await tapButton(tester, 'Add employee');
     await tester.tap(find.text(choice));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('a manager without teams is told to ask the CEO', (tester) async {
+  testWidgets('a manager without teams is told to ask the director', (
+    tester,
+  ) async {
     repo.teams.add(const Team(id: 'team-9', name: 'Legal'));
     await openEmployees(tester);
     expect(find.text('No teams yet'), findsOneWidget);
     expect(find.text('Add employee'), findsNothing);
   });
 
-  testWidgets("a new employee goes on this month's list", (tester) async {
+  testWidgets("the director's new employee goes on this month's list", (
+    tester,
+  ) async {
     repo.teams.add(const Team(id: 'team-1', name: 'Sales'));
-    repo.myTeamIds = ['team-1'];
-    await openEmployees(tester);
+    await openEmployees(tester, asDirector: true);
     // One team: named, nothing to choose. This month is shown.
     expect(find.text('Sales'), findsOneWidget);
     expect(find.byType(ChoiceChip), findsNothing);
@@ -146,7 +159,7 @@ void main() {
   testWidgets('an Emp ID is required and must be free', (tester) async {
     seedTeams();
     repo.employees.add(const Employee(empId: 'E2', name: 'Bilal'));
-    await openEmployees(tester);
+    await openEmployees(tester, asDirector: true);
 
     await startAdding(tester, 'New employee');
     await tapButton(tester, 'Add employee');
@@ -173,8 +186,11 @@ void main() {
     onList('team-2', thisMonth, ['A1']);
     await openEmployees(tester);
 
-    // Accounts (first by name) is on screen.
-    await startAdding(tester, 'From another team');
+    // Accounts (first by name) is on screen. A manager can't add someone
+    // new, so Add goes straight to the staff list.
+    await tapButton(tester, 'Add to team');
+    expect(find.text('New employee'), findsNothing);
+    expect(find.text('Add to Accounts'), findsOneWidget);
     // Bilal is already on Accounts' list; people who left aren't offered.
     expect(find.text('Leela'), findsOneWidget);
     expect(find.text('L1 · Lawyer\nIn Legal'), findsOneWidget);
@@ -217,14 +233,28 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Asha'), findsOneWidget);
     expect(find.text('Bilal'), findsNothing);
+  });
 
-    // A new employee goes on the list on screen.
+  testWidgets("the director sees every team and adds to the one on screen", (
+    tester,
+  ) async {
+    seedTeams();
+    repo.employees.add(const Employee(empId: 'S1', name: 'Asha'));
+    onList('team-1', thisMonth, ['S1']);
+    onList('team-2', thisMonth, const []);
+    await openEmployees(tester, asDirector: true);
+
+    // Legal too, though it isn't a team the director "manages".
+    expect(find.byType(ChoiceChip), findsNWidgets(3));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Sales'));
+    await tester.pumpAndSettle();
+
     await startAdding(tester, 'New employee');
     await fill(tester, 'Emp ID', 'S2');
     await fill(tester, 'Name', 'Chitra');
     await tapButton(tester, 'Add employee');
     expect(repo.savedList('team-1', thisMonth), ['S1', 'S2']);
-    expect(repo.savedList('team-2', thisMonth), ['A1']);
+    expect(repo.savedList('team-2', thisMonth), isEmpty);
   });
 
   testWidgets('past months are view only; next month can be planned', (
@@ -239,7 +269,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(thisMonth.previous.label), findsOneWidget);
     expect(find.textContaining('view only'), findsOneWidget);
-    expect(find.text('Add employee'), findsNothing);
+    expect(find.text('Add to team'), findsNothing);
     await tester.tap(find.text('Bilal'));
     await tester.pumpAndSettle();
     expect(find.text('Take off Accounts list'), findsNothing);
@@ -251,7 +281,7 @@ void main() {
       await tester.pumpAndSettle();
     }
     expect(find.text(thisMonth.next.label), findsOneWidget);
-    expect(find.text('Add employee'), findsOneWidget);
+    expect(find.text('Add to team'), findsOneWidget);
     // No further than next month.
     final next = tester.widget<IconButton>(
       find.widgetWithIcon(IconButton, Icons.chevron_right),
@@ -259,11 +289,36 @@ void main() {
     expect(next.onPressed, isNull);
   });
 
-  testWidgets('the manager deactivates an employee', (tester) async {
+  testWidgets("a manager can't change an employee's details", (tester) async {
+    seedTeams();
+    repo.employees.add(
+      const Employee(empId: 'A1', name: 'Bilal', designation: 'Clerk'),
+    );
+    onList('team-2', thisMonth, ['A1']);
+    await openEmployees(tester);
+
+    await tester.tap(find.text('Bilal'));
+    await tester.pumpAndSettle();
+    expect(find.text('Employee'), findsOneWidget);
+    expect(find.text('Save changes'), findsNothing);
+    expect(find.byType(Switch), findsNothing);
+    expect(find.textContaining('Only the director can change'), findsOneWidget);
+    final name = tester.widget<TextField>(
+      find.descendant(
+        of: find.widgetWithText(TextFormField, 'Name'),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(name.readOnly, isTrue);
+    // Moving them off the team is still the manager's to do.
+    expect(find.text('Take off Accounts list'), findsOneWidget);
+  });
+
+  testWidgets('the director deactivates an employee', (tester) async {
     seedTeams();
     repo.employees.add(const Employee(empId: 'A1', name: 'Bilal'));
     onList('team-2', thisMonth, ['A1']);
-    await openEmployees(tester);
+    await openEmployees(tester, asDirector: true);
 
     await tester.tap(find.text('Bilal'));
     await tester.pumpAndSettle();

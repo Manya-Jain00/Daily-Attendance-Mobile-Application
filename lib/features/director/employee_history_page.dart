@@ -12,7 +12,7 @@ import '../../shared/widgets/load_state.dart';
 import '../manager/attendance_page.dart' show statusColor;
 import '../manager/employees_page.dart' show initialOf;
 
-/// CEO: one employee's attendance over any dates, across every team they
+/// Director: one employee's attendance over any dates, across every team they
 /// worked in. First pick the person, then the dates.
 class EmployeeHistoryPage extends StatefulWidget {
   const EmployeeHistoryPage({super.key, required this.repository});

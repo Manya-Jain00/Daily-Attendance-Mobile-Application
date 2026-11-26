@@ -11,9 +11,13 @@ import '../../shared/widgets/team_selector.dart';
 import 'employee_form_page.dart';
 import 'pick_employee_page.dart';
 
-/// Manager: who works in each of their teams, month by month. Each month
-/// starts as a copy of the month before, so the manager only adds or removes
-/// the people who changed. The daily attendance sheet lists these people.
+/// Who works in each team, month by month. Each month starts as a copy of
+/// the month before, so only the people who changed are added or removed.
+/// The daily attendance sheet lists these people.
+///
+/// A manager sees their own teams and puts people already in the company on
+/// or off their lists. The director sees every team, and is the only one who
+/// adds new employees, changes their details or deactivates them.
 class EmployeesPage extends StatefulWidget {
   const EmployeesPage({super.key, required this.repository});
 
@@ -30,7 +34,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
   late final _employees = widget.repository.watchEmployees();
 
   /// This month can be changed, and next month planned ahead. Past months
-  /// are view only (the CEO corrects those).
+  /// are view only (the director corrects those).
   final _thisMonth = Month.now();
   late Month _month = _thisMonth;
   late Stream<List<Roster>> _rosters = widget.repository.watchRosters(_month);
@@ -39,6 +43,8 @@ class _EmployeesPageState extends State<EmployeesPage> {
   String? _teamId;
 
   bool get _editable => _month == _thisMonth || _month == _thisMonth.next;
+
+  bool get _isDirector => widget.repository.isDirector;
 
   void _showMonth(Month month) => setState(() {
     _month = month;
@@ -53,33 +59,37 @@ class _EmployeesPageState extends State<EmployeesPage> {
   }
 
   Future<void> _add(_View view) async {
-    final choice = await showModalBottomSheet<_AddChoice>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.person_add_alt_1_outlined),
-              title: const Text('New employee'),
-              subtitle: const Text('Someone not in the app yet'),
-              onTap: () => Navigator.pop(context, _AddChoice.newEmployee),
-            ),
-            ListTile(
-              leading: const Icon(Icons.group_add_outlined),
-              title: const Text('From another team'),
-              subtitle: const Text(
-                'Someone already in the app who works in this team this '
-                'month',
+    // Managers can only put existing staff on their list.
+    final choice = !_isDirector
+        ? _AddChoice.fromAnotherTeam
+        : await showModalBottomSheet<_AddChoice>(
+            context: context,
+            showDragHandle: true,
+            builder: (context) => SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.person_add_alt_1_outlined),
+                    title: const Text('New employee'),
+                    subtitle: const Text('Someone not in the app yet'),
+                    onTap: () => Navigator.pop(context, _AddChoice.newEmployee),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.group_add_outlined),
+                    title: const Text('From another team'),
+                    subtitle: const Text(
+                      'Someone already in the app who works in this team this '
+                      'month',
+                    ),
+                    onTap: () =>
+                        Navigator.pop(context, _AddChoice.fromAnotherTeam),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
-              onTap: () => Navigator.pop(context, _AddChoice.fromAnotherTeam),
             ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+          );
     if (choice == null || !mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -126,14 +136,18 @@ class _EmployeesPageState extends State<EmployeesPage> {
             if (loading != null) return loading;
             final teams = teamsSnap.data!;
             final mine = widget.repository.myTeamIds;
-            final myTeams = teams.where((t) => mine.contains(t.id)).toList();
+            final myTeams = _isDirector
+                ? teams
+                : teams.where((t) => mine.contains(t.id)).toList();
             if (myTeams.isEmpty) {
-              return const EmptyState(
+              return EmptyState(
                 icon: Icons.groups_outlined,
                 title: 'No teams yet',
-                message:
-                    'You have not been given a team yet. Ask your CEO to '
-                    'assign you one, then add its employees here.',
+                message: _isDirector
+                    ? 'Add a team in the Teams tab first, then add its '
+                          'employees here.'
+                    : 'You have not been given a team yet. Ask your director '
+                          'to assign you one, then add its employees here.',
               );
             }
             final teamId = _selectedFrom(myTeams);
@@ -154,7 +168,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                       heroTag: null,
                       onPressed: () => _add(view),
                       icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: const Text('Add employee'),
+                      label: Text(_isDirector ? 'Add employee' : 'Add to team'),
                     )
                   : null,
               body: Column(
@@ -189,9 +203,11 @@ class _EmployeesPageState extends State<EmployeesPage> {
 
     final notes = <Widget>[
       if (!_editable)
-        const _Note(
+        _Note(
           icon: Icons.lock_outline,
-          text: 'A past month: view only. Ask your CEO to correct it.',
+          text: _isDirector
+              ? 'A past month: view only.'
+              : 'A past month: view only. Ask your director to correct it.',
         )
       else if (list.copiedFrom != null && list.empIds.isNotEmpty)
         _Note(
@@ -217,10 +233,14 @@ class _EmployeesPageState extends State<EmployeesPage> {
             child: EmptyState(
               icon: Icons.people_outline,
               title: 'Nobody on the list',
-              message: _editable
+              message: _editable && _isDirector
                   ? 'Add the people who work in ${list.team.name} in '
                         '${_month.name}. Next month starts with the same '
                         'people.'
+                  : _editable
+                  ? 'Add the people who work in ${list.team.name} in '
+                        '${_month.name}. Someone new to the company is added '
+                        'by your director.'
                   : 'Nobody worked in ${list.team.name} in ${_month.label}.',
             ),
           ),

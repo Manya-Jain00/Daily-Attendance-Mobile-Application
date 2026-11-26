@@ -12,7 +12,7 @@ import 'employee_repository.dart';
 import 'firestore_helpers.dart';
 
 /// [EmployeeRepository] backed by Firestore, for [manager]'s company
-/// ([manager] may also be the CEO).
+/// ([manager] may also be the director).
 ///
 /// [manager] is the profile at the time this was opened; open a new one when
 /// the manager's teams change.
@@ -39,7 +39,7 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
   List<String> get myTeamIds => manager.teamIds;
 
   @override
-  bool get isCeo => manager.role == UserRole.ceo;
+  bool get isDirector => manager.role == UserRole.director;
 
   @override
   Stream<List<Team>> watchTeams() => friendlyErrors(
@@ -174,7 +174,7 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
       'teamId': teamId,
       'date': date.key,
       'entries': {for (final e in entries.entries) e.key: e.value.toMap()},
-      'markedBy': manager.uid,
+      'markedBy': manager.phone,
       'updatedAt': FieldValue.serverTimestamp(),
     }),
   );

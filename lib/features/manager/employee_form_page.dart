@@ -9,9 +9,12 @@ import '../../shared/widgets/error_banner.dart';
 import '../auth/form_validators.dart';
 import 'employees_page.dart';
 
-/// Manager: add a new employee to a team's monthly list (Emp ID, name,
-/// designation), or edit one (name, designation, active) and take them off
-/// the list. The Emp ID can't be changed later.
+/// The director adds a new employee to a team's monthly list (Emp ID, name,
+/// designation), or edits one (name, designation, active). The Emp ID can't
+/// be changed later.
+///
+/// A manager only views an employee's details here, and can take them off
+/// their team's list.
 class EmployeeFormPage extends StatefulWidget {
   const EmployeeFormPage({
     super.key,
@@ -53,6 +56,9 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
 
   bool get _adding => widget.employee == null;
 
+  /// Only the director adds employees or changes their details.
+  bool get _canEdit => widget.repository.isDirector;
+
   @override
   void dispose() {
     _empIdController.dispose();
@@ -81,7 +87,7 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
       (value ?? '').trim().length > 100 ? 'Keep it under 100 characters' : null;
 
   Future<void> _save() async {
-    if (_busy || !_formKey.currentState!.validate()) return;
+    if (_busy || !_canEdit || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     final employee = widget.employee;
     final name = _nameController.text.trim();
@@ -205,8 +211,15 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
     final list = widget.list;
     final canRemove =
         employee != null && list.editable && list.contains(employee.empId);
+    final canEdit = _canEdit;
     return Scaffold(
-      appBar: BrandAppBar(title: _adding ? 'Add employee' : 'Edit employee'),
+      appBar: BrandAppBar(
+        title: _adding
+            ? 'Add employee'
+            : canEdit
+            ? 'Edit employee'
+            : 'Employee',
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -252,6 +265,7 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
             TextFormField(
               controller: _nameController,
               enabled: !_busy,
+              readOnly: !canEdit,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
               validator: validateName("Enter the employee's name"),
@@ -264,17 +278,18 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
             TextFormField(
               controller: _designationController,
               enabled: !_busy,
+              readOnly: !canEdit,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.done,
               validator: _validateDesignation,
               onFieldSubmitted: (_) => _save(),
-              decoration: const InputDecoration(
-                labelText: 'Designation (optional)',
-                hintText: 'e.g. Accountant',
+              decoration: InputDecoration(
+                labelText: canEdit ? 'Designation (optional)' : 'Designation',
+                hintText: canEdit ? 'e.g. Accountant' : null,
                 prefixIcon: Icon(Icons.work_outline),
               ),
             ),
-            if (employee != null) ...[
+            if (employee != null && canEdit) ...[
               const SizedBox(height: 16),
               Card(
                 margin: EdgeInsets.zero,
@@ -289,23 +304,37 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
                 ),
               ),
             ],
+            if (employee != null && !canEdit) ...[
+              const SizedBox(height: 16),
+              Text(
+                [
+                  if (!employee.active) 'Inactive: has left the company.',
+                  'Only the director can change these details or deactivate '
+                      'an employee.',
+                ].join(' '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             if (_error != null) ...[
               ErrorBanner(message: _error!),
               const SizedBox(height: 16),
             ],
-            FilledButton(
-              onPressed: _busy ? null : _save,
-              child: _busy
-                  ? SizedBox.square(
-                      dimension: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: theme.colorScheme.onPrimary,
-                      ),
-                    )
-                  : Text(_adding ? 'Add employee' : 'Save changes'),
-            ),
+            if (canEdit)
+              FilledButton(
+                onPressed: _busy ? null : _save,
+                child: _busy
+                    ? SizedBox.square(
+                        dimension: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: theme.colorScheme.onPrimary,
+                        ),
+                      )
+                    : Text(_adding ? 'Add employee' : 'Save changes'),
+              ),
             if (canRemove) ...[
               const SizedBox(height: 12),
               OutlinedButton.icon(

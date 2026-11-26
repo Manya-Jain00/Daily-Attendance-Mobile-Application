@@ -15,14 +15,14 @@ import 'employees_page.dart' show initialOf;
 import 'pick_guest_page.dart';
 
 /// Whether a manager may still change [date]'s attendance: today and the
-/// company's edit window before it. Older days are the CEO's to correct.
+/// company's edit window before it. Older days are the director's to correct.
 bool managerMayEdit(Day date, Day today, CompanySettings settings) =>
     !(date > today) && today.daysSince(date) <= settings.managerEditDays;
 
 /// Manager: one day's attendance sheet for one of their teams. The sheet
 /// lists the team's monthly list, so nobody is picked by hand each day.
 ///
-/// Opened from the CEO's dashboard (with a CEO [repository]) it offers every
+/// Opened from the director's dashboard (with a director [repository]) it offers every
 /// team, and any day up to today can be corrected.
 ///
 /// With no [date] it's the Today tab, and follows the calendar. With a
@@ -381,18 +381,18 @@ class _AttendancePageState extends State<AttendancePage> {
     required CompanySettings settings,
     required DayData data,
   }) {
-    final isCeo = _repo.isCeo;
+    final isDirector = _repo.isDirector;
     final mine = _repo.myTeamIds;
-    final myTeams = isCeo
+    final myTeams = isDirector
         ? teams
         : teams.where((t) => mine.contains(t.id)).toList();
     if (myTeams.isEmpty) {
       return EmptyState(
         icon: Icons.groups_outlined,
         title: 'No teams yet',
-        message: isCeo
+        message: isDirector
             ? 'Add teams on the Teams tab first.'
-            : 'You have not been given a team yet. Ask your CEO to assign '
+            : 'You have not been given a team yet. Ask your director to assign '
                   'you one.',
       );
     }
@@ -400,7 +400,7 @@ class _AttendancePageState extends State<AttendancePage> {
     final team = myTeams.firstWhere((t) => t.id == teamId);
     final teamNames = {for (final t in teams) t.id: t.name};
     final today = Day.today();
-    final editable = isCeo
+    final editable = isDirector
         ? !(_date > today)
         : managerMayEdit(_date, today, settings);
 
@@ -423,7 +423,7 @@ class _AttendancePageState extends State<AttendancePage> {
           style: theme.textTheme.titleSmall?.copyWith(color: muted),
         ),
       _TeamStatusSelector(
-        title: isCeo ? 'All teams' : 'All my teams',
+        title: isDirector ? 'All teams' : 'All my teams',
         teams: myTeams,
         selectedId: teamId,
         progress: progressByTeam,
@@ -435,7 +435,7 @@ class _AttendancePageState extends State<AttendancePage> {
           text: _date > today
               ? 'This day has not come yet.'
               : 'Older than ${settings.managerEditDays} days: view only. Ask '
-                    'your CEO to correct it.',
+                    'your director to correct it.',
         ),
       if (rows.isNotEmpty)
         _Summary(
@@ -482,7 +482,7 @@ class _AttendancePageState extends State<AttendancePage> {
             child: EmptyState(
               icon: Icons.people_outline,
               title: 'Nobody on the list',
-              message: isCeo
+              message: isDirector
                   ? "${team.name}'s managers put people on its list on their "
                         'Employees tab. They then show here every day.'
                   : 'Add the people who work in ${team.name} on the '
@@ -544,7 +544,7 @@ class _TeamStatusSelector extends StatelessWidget {
     required this.onSelected,
   });
 
-  /// "All my teams", or "All teams" for the CEO.
+  /// "All my teams", or "All teams" for the director.
   final String title;
   final List<Team> teams;
   final String selectedId;

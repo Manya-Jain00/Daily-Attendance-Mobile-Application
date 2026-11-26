@@ -7,7 +7,9 @@ import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
 import 'employees_page.dart';
 
-/// Manager: put someone already in the company on a team's monthly list.
+/// Put someone already in the company on a team's monthly list. This is how
+/// a manager adds people to their teams: only the director creates new
+/// employees.
 class PickEmployeePage extends StatefulWidget {
   const PickEmployeePage({
     super.key,
@@ -116,9 +118,21 @@ class _PickEmployeePageState extends State<PickEmployeePage> {
                 ? EmptyState(
                     icon: Icons.person_search_outlined,
                     title: query.isEmpty ? 'Nobody to add' : 'No match',
-                    message: query.isEmpty
-                        ? 'Everyone in the company is already on this list.'
-                        : 'Check the spelling, or add them as a new employee.',
+                    message: switch ((
+                      query.isEmpty,
+                      widget.repository.isDirector,
+                    )) {
+                      (true, true) =>
+                        'Everyone in the company is already on this list.',
+                      (true, false) =>
+                        'Everyone in the company is already on this list. '
+                            'Ask your director to add anyone new.',
+                      (false, true) =>
+                        'Check the spelling, or add them as a new employee.',
+                      (false, false) =>
+                        'Check the spelling. Someone new is added by your '
+                            'director.',
+                    },
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),

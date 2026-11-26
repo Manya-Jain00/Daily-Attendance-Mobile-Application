@@ -9,7 +9,7 @@ import '../models/month.dart';
 import '../models/roster.dart';
 
 /// What a manager reads and changes: the company's teams, its employees,
-/// each team's monthly list of people and the daily attendance. The CEO's
+/// each team's monthly list of people and the daily attendance. The director's
 /// dashboard opens one too, and then sees and corrects every team.
 ///
 /// Every manager can see the whole staff list (to put someone from another
@@ -21,9 +21,9 @@ abstract class EmployeeRepository {
   /// The teams this manager looks after.
   List<String> get myTeamIds;
 
-  /// Opened for the CEO: every team is theirs, and any day up to today can
+  /// Opened for the director: every team is theirs, and any day up to today can
   /// be corrected (no edit window).
-  bool get isCeo;
+  bool get isDirector;
 
   /// Every team in the company, sorted by name.
   Stream<List<Team>> watchTeams();

@@ -1,26 +1,18 @@
 /// A firm, as stored in `companies/{companyId}`.
 class Company {
-  const Company({
-    required this.name,
-    required this.code,
-    required this.settings,
-  });
+  const Company({required this.name, required this.settings});
 
   final String name;
-
-  /// The login code managers type, e.g. `K7RM2Q`. Never changes.
-  final String code;
 
   final CompanySettings settings;
 
   factory Company.fromMap(Map<String, dynamic> data) => Company(
     name: data['name'] is String ? data['name'] as String : '',
-    code: data['code'] is String ? data['code'] as String : '',
     settings: CompanySettings.fromMap(data['settings']),
   );
 }
 
-/// Office rules the CEO sets in Settings. Times are 24-hour `HH:MM` strings,
+/// Office rules the director sets in Settings. Times are 24-hour `HH:MM` strings,
 /// which also sort correctly as text.
 class CompanySettings {
   const CompanySettings({
@@ -58,7 +50,7 @@ class CompanySettings {
   final num halfDayBelowHours;
 
   /// How many past days a manager may still correct. Older records are
-  /// CEO-only.
+  /// director-only.
   final int managerEditDays;
 
   /// Reads stored settings, falling back to the default for any field that's

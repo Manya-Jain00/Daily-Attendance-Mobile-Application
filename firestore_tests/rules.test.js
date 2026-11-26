@@ -42,33 +42,45 @@ const settings = {
   managerEditDays: 7,
 };
 
-/** Firestore as a logged-in user with the given uid and email. */
-const as = (uid, email = `${uid}@test.com`) =>
-  env.authenticatedContext(uid, { email }).firestore();
+/** The test people, by mobile number (E.164), which is how profiles are kept. */
+const P = {
+  ceo1: '+919000000001',
+  ceo2: '+919000000002',
+  mgr1: '+919000000011',
+  mgr2: '+919000000012',
+  mgr3: '+919000000013',
+  gone1: '+919000000021',
+  intruder: '+919000000031',
+  new: '+919000000041',
+  new1: '+919000000042',
+  newmgr: '+919000000051',
+  nobody: '+919000000061',
+  victim: '+919000000071',
+  owner: '+919000000081',
+  rival: '+919000000082',
+  'm-ravi': '+919000000091',
+  'm-sita': '+919000000092',
+};
 
-/** The batch the app writes when a CEO signs up. */
-function signUpBatch(db, uid, companyId, overrides = {}) {
-  const code = overrides.code ?? 'NEWC23';
+/** Firestore as someone logged in by phone (SMS code) with this number. */
+const as = (phone) =>
+  env.authenticatedContext(`uid-${phone}`, { phone_number: phone }).firestore();
+
+/** The batch the app writes when a director sets up a new company. */
+function signUpBatch(db, phone, companyId, overrides = {}) {
   const batch = writeBatch(db);
   batch.set(doc(db, 'companies', companyId), {
     name: 'Acme',
-    code,
-    createdBy: uid,
+    createdBy: phone,
     createdAt: serverTimestamp(),
     settings,
     ...overrides.company,
   });
-  if (!overrides.skipCodeDoc) {
-    batch.set(doc(db, 'companyCodes', overrides.claimCode ?? code), {
-      companyId,
-    });
-  }
-  batch.set(doc(db, 'users', uid), {
+  batch.set(doc(db, 'users', phone), {
     companyId,
-    companyCode: code,
-    role: 'ceo',
+    role: 'director',
     name: 'Boss',
-    email: `${uid}@test.com`,
+    phone,
     teamIds: [],
     active: true,
     createdAt: serverTimestamp(),
@@ -86,68 +98,58 @@ async function seedCompany() {
   await seed(async (db) => {
     await setDoc(doc(db, 'companies', 'c1'), {
       name: 'Acme',
-      code: 'ACME22',
-      createdBy: 'ceo1',
+      createdBy: P.ceo1,
       settings,
     });
-    await setDoc(doc(db, 'companyCodes', 'ACME22'), { companyId: 'c1' });
     await setDoc(doc(db, 'companies', 'c2'), {
       name: 'Other firm',
-      code: 'XYZW23',
-      createdBy: 'ceo2',
+      createdBy: P.ceo2,
       settings,
     });
-    await setDoc(doc(db, 'companyCodes', 'XYZW23'), { companyId: 'c2' });
-    const codes = { c1: 'ACME22', c2: 'XYZW23' };
     const user = (companyId, role, extra = {}) => ({
       companyId,
-      companyCode: codes[companyId],
       role,
       name: 'Someone',
-      email: 'x@test.com',
       teamIds: [],
       active: true,
       ...extra,
     });
-    await setDoc(doc(db, 'users', 'ceo1'), user('c1', 'ceo'));
-    await setDoc(doc(db, 'users', 'mgr1'), user('c1', 'manager'));
-    await setDoc(
-      doc(db, 'users', 'gone1'),
-      user('c1', 'manager', { active: false }),
-    );
-    await setDoc(doc(db, 'users', 'ceo2'), user('c2', 'ceo'));
-    await setDoc(doc(db, 'users', 'mgr2'), user('c2', 'manager'));
+    const add = (id, companyId, role, extra = {}) =>
+      setDoc(doc(db, 'users', id), { ...user(companyId, role, extra), phone: id });
+    await add(P.ceo1, 'c1', 'director');
+    await add(P.mgr1, 'c1', 'manager');
+    await add(P.gone1, 'c1', 'manager', { active: false });
+    await add(P.ceo2, 'c2', 'director');
+    await add(P.mgr2, 'c2', 'manager');
     await setDoc(doc(db, 'companies', 'c1', 'teams', 't1'), { name: 'Sales' });
   });
 }
 
-describe('CEO sign-up', () => {
-  test('a new login can create a company with itself as CEO', async () => {
-    await assertSucceeds(signUpBatch(as('new'), 'new', 'newco').commit());
+describe('company set-up by a new director', () => {
+  test('a new login can create a company with itself as director', async () => {
+    await assertSucceeds(signUpBatch(as(P.new), P.new, 'newco').commit());
   });
 
-  test('the company alone, without the CEO profile, is refused', async () => {
-    const db = as('new');
+  test('the company alone, without the director profile, is refused', async () => {
+    const db = as(P.new);
     await assertFails(
       setDoc(doc(db, 'companies', 'newco'), {
         name: 'Acme',
-        code: 'NEWC23',
-        createdBy: 'new',
+        createdBy: P.new,
         createdAt: serverTimestamp(),
         settings,
       }),
     );
   });
 
-  test('a CEO profile alone, without a company, is refused', async () => {
-    const db = as('new');
+  test('a director profile alone, without a company, is refused', async () => {
+    const db = as(P.new);
     await assertFails(
-      setDoc(doc(db, 'users', 'new'), {
+      setDoc(doc(db, 'users', P.new), {
         companyId: 'newco',
-        companyCode: 'NEWC23',
-        role: 'ceo',
+        role: 'director',
         name: 'Boss',
-        email: 'new@test.com',
+        phone: P.new,
         teamIds: [],
         active: true,
         createdAt: serverTimestamp(),
@@ -155,58 +157,42 @@ describe('CEO sign-up', () => {
     );
   });
 
-  test("can't join an existing company as its CEO", async () => {
+  test("can't join an existing company as its director", async () => {
     await seedCompany();
-    const db = as('intruder');
+    const db = as(P.intruder);
     await assertFails(
-      setDoc(doc(db, 'users', 'intruder'), {
+      setDoc(doc(db, 'users', P.intruder), {
         companyId: 'c1',
-        role: 'ceo',
+        role: 'director',
         name: 'Intruder',
-        email: 'intruder@test.com',
+        phone: P.intruder,
         teamIds: [],
         active: true,
         createdAt: serverTimestamp(),
       }),
     );
     // Not even by rewriting the company in the same batch.
-    await assertFails(signUpBatch(db, 'intruder', 'c1').commit());
+    await assertFails(signUpBatch(db, P.intruder, 'c1').commit());
   });
 
   test('someone already in a company cannot create a second one', async () => {
     await seedCompany();
-    await assertFails(signUpBatch(as('mgr1'), 'mgr1', 'newco').commit());
+    await assertFails(signUpBatch(as(P.mgr1), P.mgr1, 'newco').commit());
   });
 
-  test('must use the login’s own email', async () => {
+  test('the profile must be under the login’s own number', async () => {
     await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', {
-        user: { email: 'someone-else@test.com' },
+      signUpBatch(as(P.new), P.new, 'newco', {
+        user: { phone: P.new1 },
       }).commit(),
     );
-  });
-
-  test('cannot sign up as a manager or with teams', async () => {
-    await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', {
-        user: { role: 'manager' },
-      }).commit(),
-    );
-    await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', {
-        user: { teamIds: ['t1'] },
-      }).commit(),
-    );
-  });
-
-  test('cannot create a profile for another uid', async () => {
-    const db = as('new');
-    const batch = signUpBatch(db, 'new', 'newco');
-    batch.set(doc(db, 'users', 'victim'), {
+    const db = as(P.new);
+    const batch = signUpBatch(db, P.new, 'newco');
+    batch.set(doc(db, 'users', P.victim), {
       companyId: 'newco',
-      role: 'ceo',
+      role: 'director',
       name: 'X',
-      email: 'new@test.com',
+      phone: P.victim,
       teamIds: [],
       active: true,
       createdAt: serverTimestamp(),
@@ -214,53 +200,42 @@ describe('CEO sign-up', () => {
     await assertFails(batch.commit());
   });
 
-  test('the company code must be claimed in the same batch', async () => {
+  test('cannot sign up as a manager or with teams', async () => {
     await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', { skipCodeDoc: true }).commit(),
+      signUpBatch(as(P.new), P.new, 'newco', {
+        user: { role: 'manager' },
+      }).commit(),
     );
-    // ...and it must be the company's own code.
     await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', { claimCode: 'OTHR23' }).commit(),
+      signUpBatch(as(P.new), P.new, 'newco', {
+        user: { teamIds: ['t1'] },
+      }).commit(),
     );
-  });
-
-  test('a code already taken by another firm is refused', async () => {
-    await seedCompany();
-    await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', { code: 'ACME22' }).commit(),
-    );
-  });
-
-  test('codes must be 6 characters with no look-alikes', async () => {
-    for (const code of ['ABC12', 'ABCDEFG', 'ABCDE0', 'abcdef', 'ABCDEI']) {
-      await assertFails(
-        signUpBatch(as('new'), 'new', 'newco', { code }).commit(),
-      );
-    }
   });
 
   test('the company must start with valid settings', async () => {
     await assertFails(
-      signUpBatch(as('new1'), 'new1', 'cNew', {
+      signUpBatch(as(P.new1), P.new1, 'cNew', {
         company: { settings: { ...settings, managerEditDays: 400 } },
       }).commit(),
     );
     await assertFails(
-      signUpBatch(as('new1'), 'new1', 'cNew', { company: { settings: {} } }).commit(),
+      signUpBatch(as(P.new1), P.new1, 'cNew', { company: { settings: {} } }).commit(),
     );
   });
 
-  test("the CEO profile must carry the company's code", async () => {
-    await assertFails(
-      signUpBatch(as('new'), 'new', 'newco', {
-        user: { companyCode: 'ZZZZ22' },
-      }).commit(),
-    );
+  test('only phone logins count: an email login can do nothing', async () => {
+    await seedCompany();
+    const emailOnly = env
+      .authenticatedContext('someone', { email: 'boss@test.com' })
+      .firestore();
+    await assertFails(signUpBatch(emailOnly, P.new, 'newco').commit());
+    await assertFails(getDoc(doc(emailOnly, 'companies', 'c1')));
   });
 
   test('logged-out visitors can do nothing', async () => {
     const db = env.unauthenticatedContext().firestore();
-    await assertFails(signUpBatch(db, 'new', 'newco').commit());
+    await assertFails(signUpBatch(db, P.new, 'newco').commit());
   });
 });
 
@@ -268,145 +243,133 @@ describe('reading profiles', () => {
   beforeEach(seedCompany);
 
   test('everyone can read their own profile', async () => {
-    await assertSucceeds(getDoc(doc(as('mgr1'), 'users', 'mgr1')));
-    await assertSucceeds(getDoc(doc(as('gone1'), 'users', 'gone1')));
+    await assertSucceeds(getDoc(doc(as(P.mgr1), 'users', P.mgr1)));
+    await assertSucceeds(getDoc(doc(as(P.gone1), 'users', P.gone1)));
   });
 
   test('a login with no profile can check its own (missing) profile', async () => {
-    await assertSucceeds(getDoc(doc(as('nobody'), 'users', 'nobody')));
+    await assertSucceeds(getDoc(doc(as(P.nobody), 'users', P.nobody)));
   });
 
-  test('a CEO can read profiles in their company only', async () => {
-    await assertSucceeds(getDoc(doc(as('ceo1'), 'users', 'mgr1')));
-    await assertFails(getDoc(doc(as('ceo1'), 'users', 'mgr2')));
+  test('a director can read profiles in their company only', async () => {
+    await assertSucceeds(getDoc(doc(as(P.ceo1), 'users', P.mgr1)));
+    await assertFails(getDoc(doc(as(P.ceo1), 'users', P.mgr2)));
   });
 
   test("a manager can't read other people's profiles", async () => {
-    await assertFails(getDoc(doc(as('mgr1'), 'users', 'ceo1')));
+    await assertFails(getDoc(doc(as(P.mgr1), 'users', P.ceo1)));
   });
 });
 
 describe('managing managers (Phase 3)', () => {
   beforeEach(seedCompany);
 
-  const newManager = (companyId) => ({
+  const newManager = (companyId, phone = P.newmgr) => ({
     companyId,
-    companyCode: companyId === 'c1' ? 'ACME22' : 'XYZW23',
     role: 'manager',
     name: 'New manager',
-    username: 'ravi',
-    email:
-      companyId === 'c1'
-        ? 'ravi@acme22.login.daily-attendance-b1b1e.firebaseapp.com'
-        : 'ravi@xyzw23.login.daily-attendance-b1b1e.firebaseapp.com',
+    phone,
     teamIds: ['t1'],
     active: true,
     createdAt: serverTimestamp(),
   });
 
-  test('a CEO can add a manager to their company', async () => {
+  test('a director can add a manager to their company', async () => {
     await assertSucceeds(
-      setDoc(doc(as('ceo1'), 'users', 'newmgr'), newManager('c1')),
+      setDoc(doc(as(P.ceo1), 'users', P.newmgr), newManager('c1')),
     );
   });
 
-  test("a CEO can't add a manager to another company", async () => {
+  test("a director can't add a manager to another company", async () => {
     await assertFails(
-      setDoc(doc(as('ceo1'), 'users', 'newmgr'), newManager('c2')),
+      setDoc(doc(as(P.ceo1), 'users', P.newmgr), newManager('c2')),
     );
   });
 
-  test('a manager needs a valid username and their company’s code', async () => {
-    const db = as('ceo1');
-    const { username, ...noUsername } = newManager('c1');
-    await assertFails(setDoc(doc(db, 'users', 'newmgr'), noUsername));
+  test('the profile is kept under a valid mobile number', async () => {
+    const db = as(P.ceo1);
+    // The number field must match the document it is saved under.
     await assertFails(
-      setDoc(doc(db, 'users', 'newmgr'), {
-        ...newManager('c1'),
-        username: 'Has Spaces',
-      }),
+      setDoc(doc(db, 'users', P.newmgr), newManager('c1', P.nobody)),
     );
-    await assertFails(
-      setDoc(doc(db, 'users', 'newmgr'), {
-        ...newManager('c1'),
-        companyCode: 'XYZW23',
-      }),
-    );
+    for (const bad of ['9876543210', '+91 98765 43210', 'ravi']) {
+      await assertFails(setDoc(doc(db, 'users', bad), newManager('c1', bad)));
+    }
+    const { phone, ...noPhone } = newManager('c1');
+    await assertFails(setDoc(doc(db, 'users', P.newmgr), noPhone));
   });
 
-  test('the email must be the login address made from code + username', async () => {
-    await assertFails(
-      setDoc(doc(as('ceo1'), 'users', 'newmgr'), {
-        ...newManager('c1'),
-        email: 'ravi@gmail.com',
-      }),
-    );
-    await assertFails(
-      setDoc(doc(as('ceo1'), 'users', 'newmgr'), {
-        ...newManager('c1'),
-        username: 'priya',
-      }),
-    );
+  test('a number already in the app (any firm) cannot be added again', async () => {
+    const db = as(P.ceo1);
+    await assertFails(setDoc(doc(db, 'users', P.mgr2), newManager('c1', P.mgr2)));
+    await assertFails(setDoc(doc(db, 'users', P.ceo2), newManager('c1', P.ceo2)));
+    await assertFails(setDoc(doc(db, 'users', P.mgr1), newManager('c1', P.mgr1)));
   });
 
-  test("a CEO can't change a manager's username or code", async () => {
-    await assertFails(
-      updateDoc(doc(as('ceo1'), 'users', 'mgr1'), { username: 'other' }),
-    );
-    await assertFails(
-      updateDoc(doc(as('ceo1'), 'users', 'mgr1'), { companyCode: 'XYZW23' }),
-    );
-  });
-
-  test("a CEO can't create another CEO, and managers can't add anyone", async () => {
-    await assertFails(
-      setDoc(doc(as('ceo1'), 'users', 'newmgr'), {
-        ...newManager('c1'),
-        role: 'ceo',
-      }),
-    );
-    await assertFails(
-      setDoc(doc(as('mgr1'), 'users', 'newmgr'), newManager('c1')),
-    );
-  });
-
-  test('a CEO can change a manager’s teams and deactivate them', async () => {
+  test('the added manager can log in and read their profile and firm', async () => {
     await assertSucceeds(
-      updateDoc(doc(as('ceo1'), 'users', 'mgr1'), {
+      setDoc(doc(as(P.ceo1), 'users', P.newmgr), newManager('c1')),
+    );
+    const mgr = as(P.newmgr);
+    await assertSucceeds(getDoc(doc(mgr, 'users', P.newmgr)));
+    await assertSucceeds(getDoc(doc(mgr, 'companies', 'c1')));
+  });
+
+  test("a director can't change a manager's number", async () => {
+    await assertFails(
+      updateDoc(doc(as(P.ceo1), 'users', P.mgr1), { phone: P.nobody }),
+    );
+  });
+
+  test("a director can't create another director, and managers can't add anyone", async () => {
+    await assertFails(
+      setDoc(doc(as(P.ceo1), 'users', P.newmgr), {
+        ...newManager('c1'),
+        role: 'director',
+      }),
+    );
+    await assertFails(
+      setDoc(doc(as(P.mgr1), 'users', P.newmgr), newManager('c1')),
+    );
+  });
+
+  test('a director can change a manager’s teams and deactivate them', async () => {
+    await assertSucceeds(
+      updateDoc(doc(as(P.ceo1), 'users', P.mgr1), {
         teamIds: ['t1', 't2'],
         active: false,
       }),
     );
   });
 
-  test("a CEO can't promote a manager or move them to another company", async () => {
+  test("a director can't promote a manager or move them to another company", async () => {
     await assertFails(
-      updateDoc(doc(as('ceo1'), 'users', 'mgr1'), { role: 'ceo' }),
+      updateDoc(doc(as(P.ceo1), 'users', P.mgr1), { role: 'director' }),
     );
     await assertFails(
-      updateDoc(doc(as('ceo1'), 'users', 'mgr1'), { companyId: 'c2' }),
+      updateDoc(doc(as(P.ceo1), 'users', P.mgr1), { companyId: 'c2' }),
     );
     await assertFails(
-      updateDoc(doc(as('ceo1'), 'users', 'mgr2'), { active: false }),
+      updateDoc(doc(as(P.ceo1), 'users', P.mgr2), { active: false }),
     );
   });
 
   test("users can't change their own profile or delete any", async () => {
     await assertFails(
-      updateDoc(doc(as('mgr1'), 'users', 'mgr1'), { role: 'ceo' }),
+      updateDoc(doc(as(P.mgr1), 'users', P.mgr1), { role: 'director' }),
     );
     await assertFails(
-      updateDoc(doc(as('mgr1'), 'users', 'mgr1'), { teamIds: ['t9'] }),
+      updateDoc(doc(as(P.mgr1), 'users', P.mgr1), { teamIds: ['t9'] }),
     );
-    await assertFails(deleteDoc(doc(as('ceo1'), 'users', 'mgr1')));
+    await assertFails(deleteDoc(doc(as(P.ceo1), 'users', P.mgr1)));
   });
 
-  test('a deactivated CEO loses their powers', async () => {
-    await seed((db) => updateDoc(doc(db, 'users', 'ceo1'), { active: false }));
+  test('a deactivated director loses their powers', async () => {
+    await seed((db) => updateDoc(doc(db, 'users', P.ceo1), { active: false }));
     await assertFails(
-      setDoc(doc(as('ceo1'), 'users', 'newmgr'), newManager('c1')),
+      setDoc(doc(as(P.ceo1), 'users', P.newmgr), newManager('c1')),
     );
-    await assertFails(getDoc(doc(as('ceo1'), 'companies', 'c1')));
+    await assertFails(getDoc(doc(as(P.ceo1), 'companies', 'c1')));
   });
 });
 
@@ -414,16 +377,16 @@ describe('companies and their data', () => {
   beforeEach(seedCompany);
 
   test('active members can read their own company only', async () => {
-    await assertSucceeds(getDoc(doc(as('ceo1'), 'companies', 'c1')));
-    await assertSucceeds(getDoc(doc(as('mgr1'), 'companies', 'c1')));
-    await assertFails(getDoc(doc(as('gone1'), 'companies', 'c1')));
-    await assertFails(getDoc(doc(as('ceo1'), 'companies', 'c2')));
-    await assertFails(getDoc(doc(as('nobody'), 'companies', 'c1')));
+    await assertSucceeds(getDoc(doc(as(P.ceo1), 'companies', 'c1')));
+    await assertSucceeds(getDoc(doc(as(P.mgr1), 'companies', 'c1')));
+    await assertFails(getDoc(doc(as(P.gone1), 'companies', 'c1')));
+    await assertFails(getDoc(doc(as(P.ceo1), 'companies', 'c2')));
+    await assertFails(getDoc(doc(as(P.nobody), 'companies', 'c1')));
   });
 
-  test('the CEO can rename the company and change settings', async () => {
+  test('the director can rename the company and change settings', async () => {
     await assertSucceeds(
-      updateDoc(doc(as('ceo1'), 'companies', 'c1'), {
+      updateDoc(doc(as(P.ceo1), 'companies', 'c1'), {
         name: 'Acme Pvt Ltd',
         'settings.lateAfter': '10:00',
       }),
@@ -431,7 +394,7 @@ describe('companies and their data', () => {
   });
 
   test('settings must have the fields and limits of the Settings screen', async () => {
-    const ref = doc(as('ceo1'), 'companies', 'c1');
+    const ref = doc(as(P.ceo1), 'companies', 'c1');
     const save = (extra) =>
       updateDoc(ref, { name: 'Acme', settings: { ...settings, ...extra } });
     // What the app writes: the whole settings map, including half hours.
@@ -452,25 +415,14 @@ describe('companies and their data', () => {
     await assertFails(updateDoc(ref, { settings: 'none' }));
   });
 
-  test('the company code never changes and code records are closed', async () => {
-    await assertFails(
-      updateDoc(doc(as('ceo1'), 'companies', 'c1'), { code: 'NEWC23' }),
-    );
-    await assertFails(getDoc(doc(as('ceo1'), 'companyCodes', 'ACME22')));
-    await assertFails(
-      setDoc(doc(as('ceo2'), 'companyCodes', 'ACME22'), { companyId: 'c2' }),
-    );
-    await assertFails(deleteDoc(doc(as('ceo1'), 'companyCodes', 'ACME22')));
-  });
-
   test("managers can't change the company; nobody can change its creator", async () => {
     await assertFails(
-      updateDoc(doc(as('mgr1'), 'companies', 'c1'), { name: 'Mine now' }),
+      updateDoc(doc(as(P.mgr1), 'companies', 'c1'), { name: 'Mine now' }),
     );
     await assertFails(
-      updateDoc(doc(as('ceo1'), 'companies', 'c1'), { createdBy: 'mgr1' }),
+      updateDoc(doc(as(P.ceo1), 'companies', 'c1'), { createdBy: P.mgr1 }),
     );
-    await assertFails(deleteDoc(doc(as('ceo1'), 'companies', 'c1')));
+    await assertFails(deleteDoc(doc(as(P.ceo1), 'companies', 'c1')));
   });
 });
 
@@ -479,8 +431,8 @@ describe('teams', () => {
 
   const team = (name) => ({ name, createdAt: serverTimestamp() });
 
-  test('the CEO adds, renames and deletes teams', async () => {
-    const db = as('ceo1');
+  test('the director adds, renames and deletes teams', async () => {
+    const db = as(P.ceo1);
     const ref = doc(db, 'companies', 'c1', 'teams', 't2');
     await assertSucceeds(getDoc(doc(db, 'companies', 'c1', 'teams', 't1')));
     await assertSucceeds(setDoc(ref, team('Legal')));
@@ -489,13 +441,13 @@ describe('teams', () => {
   });
 
   test('a team is just a valid name', async () => {
-    const ref = doc(as('ceo1'), 'companies', 'c1', 'teams', 't2');
+    const ref = doc(as(P.ceo1), 'companies', 'c1', 'teams', 't2');
     await assertFails(setDoc(ref, team('')));
     await assertFails(setDoc(ref, team('x'.repeat(101))));
-    await assertFails(setDoc(ref, { ...team('Legal'), managerIds: ['mgr1'] }));
+    await assertFails(setDoc(ref, { ...team('Legal'), managerIds: [P.mgr1] }));
     await assertFails(setDoc(ref, { name: 'Legal' })); // no createdAt
     await assertFails(
-      updateDoc(doc(as('ceo1'), 'companies', 'c1', 'teams', 't1'), {
+      updateDoc(doc(as(P.ceo1), 'companies', 'c1', 'teams', 't1'), {
         extra: 1,
       }),
     );
@@ -503,28 +455,28 @@ describe('teams', () => {
 
   test('deleting a team and taking it off its managers in one batch', async () => {
     await seed((db) =>
-      updateDoc(doc(db, 'users', 'mgr1'), { teamIds: ['t1', 't9'] }),
+      updateDoc(doc(db, 'users', P.mgr1), { teamIds: ['t1', 't9'] }),
     );
-    const db = as('ceo1');
+    const db = as(P.ceo1);
     const batch = writeBatch(db);
     batch.delete(doc(db, 'companies', 'c1', 'teams', 't1'));
-    batch.update(doc(db, 'users', 'mgr1'), { teamIds: ['t9'] });
+    batch.update(doc(db, 'users', P.mgr1), { teamIds: ['t9'] });
     await assertSucceeds(batch.commit());
   });
 
   test("managers can't change teams (yet)", async () => {
-    const db = as('mgr1');
+    const db = as(P.mgr1);
     await assertFails(
       setDoc(doc(db, 'companies', 'c1', 'teams', 't2'), team('Mine')),
     );
     await assertFails(deleteDoc(doc(db, 'companies', 'c1', 'teams', 't1')));
   });
 
-  test('the CEO can list the company’s managers', async () => {
+  test('the director can list the company’s managers', async () => {
     const { collection, getDocs, query, where } = await import(
       'firebase/firestore'
     );
-    const db = as('ceo1');
+    const db = as(P.ceo1);
     await assertSucceeds(
       getDocs(
         query(
@@ -541,8 +493,8 @@ describe('teams', () => {
     );
   });
 
-  test("another firm's CEO can't touch them", async () => {
-    const db = as('ceo2');
+  test("another firm's director can't touch them", async () => {
+    const db = as(P.ceo2);
     await assertFails(getDoc(doc(db, 'companies', 'c1', 'teams', 't1')));
     await assertFails(
       setDoc(doc(db, 'companies', 'c1', 'teams', 't2'), team('Hack')),
@@ -551,7 +503,7 @@ describe('teams', () => {
   });
 
   test('top-level collections other than users are closed', async () => {
-    await assertFails(setDoc(doc(as('ceo1'), 'attendance', 'a1'), { x: 1 }));
+    await assertFails(setDoc(doc(as(P.ceo1), 'attendance', 'a1'), { x: 1 }));
   });
 });
 
@@ -573,17 +525,16 @@ describe('employees and monthly lists (Phase 4)', () => {
       await setDoc(doc(db, 'companies', 'c1', 'teams', 't3'), {
         name: 'Legal',
       });
-      await updateDoc(doc(db, 'users', 'mgr1'), { teamIds: ['t1', 't2'] });
-      await setDoc(doc(db, 'users', 'mgr3'), {
+      await updateDoc(doc(db, 'users', P.mgr1), { teamIds: ['t1', 't2'] });
+      await setDoc(doc(db, 'users', P.mgr3), {
         companyId: 'c1',
         companyCode: 'ACME22',
         role: 'manager',
         name: 'Other manager',
-        email: 'x@test.com',
         teamIds: ['t3'],
         active: true,
       });
-      await updateDoc(doc(db, 'users', 'gone1'), { teamIds: ['t1'] });
+      await updateDoc(doc(db, 'users', P.gone1), { teamIds: ['t1'] });
       await setDoc(doc(db, 'companies', 'c1', 'employees', 'E1'), {
         empId: 'E1',
         name: 'Asha',
@@ -622,7 +573,7 @@ describe('employees and monthly lists (Phase 4)', () => {
     const { collection, getDocs, query, where } = await import(
       'firebase/firestore'
     );
-    for (const uid of ['mgr1', 'mgr3', 'ceo1']) {
+    for (const uid of [P.mgr1, P.mgr3, P.ceo1]) {
       const db = as(uid);
       await assertSucceeds(getDocs(collection(db, 'companies', 'c1', 'teams')));
       await assertSucceeds(
@@ -640,20 +591,21 @@ describe('employees and monthly lists (Phase 4)', () => {
     }
   });
 
-  test('any active manager adds and edits employees', async () => {
-    const db = as('mgr3');
+  test('only the director adds, edits and deactivates employees', async () => {
+    const edit = { name: 'Asha Rao', designation: 'Senior clerk', active: false };
+    // Managers can't, not even on their own teams.
+    await assertFails(setDoc(empRef(as(P.mgr3), 'E2'), employee('E2')));
+    await assertFails(updateDoc(empRef(as(P.mgr3), 'E1'), edit));
+    await assertFails(updateDoc(empRef(as(P.mgr1), 'E1'), { active: false }));
+    // Nor a director of another company.
+    await assertFails(setDoc(empRef(as(P.ceo2), 'E2'), employee('E2')));
+    const db = as(P.ceo1);
     await assertSucceeds(setDoc(empRef(db, 'E2'), employee('E2')));
-    await assertSucceeds(
-      updateDoc(empRef(as('mgr1'), 'E1'), {
-        name: 'Asha Rao',
-        designation: 'Senior clerk',
-        active: false,
-      }),
-    );
+    await assertSucceeds(updateDoc(empRef(db, 'E1'), edit));
   });
 
   test('an employee record must be valid', async () => {
-    const db = as('mgr1');
+    const db = as(P.ceo1);
     // The Emp ID is the document id, upper case.
     await assertFails(setDoc(empRef(db, 'E2'), employee('E3')));
     await assertFails(setDoc(empRef(db, 'e2'), employee('e2')));
@@ -676,14 +628,14 @@ describe('employees and monthly lists (Phase 4)', () => {
   });
 
   test('nobody deletes employees or lists', async () => {
-    await assertFails(deleteDoc(empRef(as('mgr1'), 'E1')));
-    await assertFails(deleteDoc(empRef(as('ceo1'), 'E1')));
-    await assertFails(deleteDoc(rosterRef(as('mgr3'), 't3', monthKey())));
-    await assertFails(deleteDoc(rosterRef(as('ceo1'), 't3', monthKey())));
+    await assertFails(deleteDoc(empRef(as(P.mgr1), 'E1')));
+    await assertFails(deleteDoc(empRef(as(P.ceo1), 'E1')));
+    await assertFails(deleteDoc(rosterRef(as(P.mgr3), 't3', monthKey())));
+    await assertFails(deleteDoc(rosterRef(as(P.ceo1), 't3', monthKey())));
   });
 
   test("a manager saves their own teams' lists for this month or next", async () => {
-    const db = as('mgr1');
+    const db = as(P.mgr1);
     await assertSucceeds(setDoc(rosterRef(db, 't1', monthKey()), roster('t1', monthKey())));
     await assertSucceeds(
       setDoc(rosterRef(db, 't2', monthKey(1)), roster('t2', monthKey(1), [])),
@@ -700,7 +652,7 @@ describe('employees and monthly lists (Phase 4)', () => {
   });
 
   test('a list must be valid', async () => {
-    const db = as('mgr1');
+    const db = as(P.mgr1);
     const m = monthKey();
     // The id must be {teamId}_{month}.
     await assertFails(setDoc(rosterRef(db, 't1', m), roster('t2', m)));
@@ -716,15 +668,15 @@ describe('employees and monthly lists (Phase 4)', () => {
   });
 
   test('adding a new employee and putting them on a list in one batch', async () => {
-    const db = as('mgr1');
+    const db = as(P.mgr1);
     const batch = writeBatch(db);
     batch.set(empRef(db, 'E5'), employee('E5'));
     batch.set(rosterRef(db, 't1', monthKey()), roster('t1', monthKey(), ['E5']));
     await assertSucceeds(batch.commit());
   });
 
-  test('the CEO can correct any list, any month', async () => {
-    const db = as('ceo1');
+  test('the director can correct any list, any month', async () => {
+    const db = as(P.ceo1);
     await assertSucceeds(setDoc(rosterRef(db, 't3', monthKey(-5)), roster('t3', monthKey(-5))));
     await assertSucceeds(setDoc(rosterRef(db, 't1', monthKey()), roster('t1', monthKey())));
     // The team must exist.
@@ -745,17 +697,17 @@ describe('employees and monthly lists (Phase 4)', () => {
 
   test('deactivated managers and other firms are kept out', async () => {
     const m = monthKey();
-    await assertFails(getDoc(empRef(as('gone1'), 'E1')));
-    await assertFails(setDoc(empRef(as('gone1'), 'E2'), employee('E2')));
-    await assertFails(updateDoc(empRef(as('gone1'), 'E1'), { name: 'X' }));
-    await assertFails(setDoc(rosterRef(as('gone1'), 't1', m), roster('t1', m)));
-    await assertFails(getDoc(empRef(as('ceo2'), 'E1')));
-    await assertFails(setDoc(empRef(as('ceo2'), 'E2'), employee('E2')));
-    await assertFails(getDoc(rosterRef(as('ceo2'), 't3', m)));
-    await assertFails(setDoc(rosterRef(as('ceo2'), 't1', m), roster('t1', m)));
-    await assertFails(getDoc(empRef(as('mgr2'), 'E1')));
+    await assertFails(getDoc(empRef(as(P.gone1), 'E1')));
+    await assertFails(setDoc(empRef(as(P.gone1), 'E2'), employee('E2')));
+    await assertFails(updateDoc(empRef(as(P.gone1), 'E1'), { name: 'X' }));
+    await assertFails(setDoc(rosterRef(as(P.gone1), 't1', m), roster('t1', m)));
+    await assertFails(getDoc(empRef(as(P.ceo2), 'E1')));
+    await assertFails(setDoc(empRef(as(P.ceo2), 'E2'), employee('E2')));
+    await assertFails(getDoc(rosterRef(as(P.ceo2), 't3', m)));
+    await assertFails(setDoc(rosterRef(as(P.ceo2), 't1', m), roster('t1', m)));
+    await assertFails(getDoc(empRef(as(P.mgr2), 'E1')));
     await assertFails(
-      getDoc(doc(as('mgr2'), 'companies', 'c1', 'teams', 't1')),
+      getDoc(doc(as(P.mgr2), 'companies', 'c1', 'teams', 't1')),
     );
   });
 });
@@ -774,20 +726,19 @@ describe('daily attendance (Phase 5)', () => {
       await setDoc(doc(db, 'companies', 'c1', 'teams', 't3'), {
         name: 'Legal',
       });
-      await updateDoc(doc(db, 'users', 'mgr1'), { teamIds: ['t1'] });
-      await updateDoc(doc(db, 'users', 'gone1'), { teamIds: ['t1'] });
-      await setDoc(doc(db, 'users', 'mgr3'), {
+      await updateDoc(doc(db, 'users', P.mgr1), { teamIds: ['t1'] });
+      await updateDoc(doc(db, 'users', P.gone1), { teamIds: ['t1'] });
+      await setDoc(doc(db, 'users', P.mgr3), {
         companyId: 'c1',
         companyCode: 'ACME22',
         role: 'manager',
         name: 'Other manager',
-        email: 'x@test.com',
         teamIds: ['t3'],
         active: true,
       });
       await setDoc(
         doc(db, 'companies', 'c1', 'attendance', `t3_${dayKey()}`),
-        { teamId: 't3', date: dayKey(), entries: {}, markedBy: 'mgr3' },
+        { teamId: 't3', date: dayKey(), entries: {}, markedBy: P.mgr3 },
       );
     });
   });
@@ -809,19 +760,19 @@ describe('daily attendance (Phase 5)', () => {
     setDoc(sheetRef(as(uid), teamId, date), sheet(uid, teamId, date, extra));
 
   test("a manager saves their own team's sheet for today", async () => {
-    await assertSucceeds(save('mgr1', 't1', dayKey()));
+    await assertSucceeds(save(P.mgr1, 't1', dayKey()));
     // Saving again replaces it.
-    await assertSucceeds(save('mgr1', 't1', dayKey(), { entries: {} }));
+    await assertSucceeds(save(P.mgr1, 't1', dayKey(), { entries: {} }));
     // Not another manager's team.
-    await assertFails(save('mgr1', 't3', dayKey()));
-    await assertFails(save('mgr3', 't1', dayKey()));
+    await assertFails(save(P.mgr1, 't3', dayKey()));
+    await assertFails(save(P.mgr3, 't1', dayKey()));
   });
 
   test('a manager corrects the last 7 days, but not older or future days', async () => {
-    await assertSucceeds(save('mgr1', 't1', dayKey(-1)));
-    await assertSucceeds(save('mgr1', 't1', dayKey(-7)));
-    await assertFails(save('mgr1', 't1', dayKey(-10)));
-    await assertFails(save('mgr1', 't1', dayKey(3)));
+    await assertSucceeds(save(P.mgr1, 't1', dayKey(-1)));
+    await assertSucceeds(save(P.mgr1, 't1', dayKey(-7)));
+    await assertFails(save(P.mgr1, 't1', dayKey(-10)));
+    await assertFails(save(P.mgr1, 't1', dayKey(3)));
   });
 
   test("the edit window follows the company's settings", async () => {
@@ -830,37 +781,37 @@ describe('daily attendance (Phase 5)', () => {
         'settings.managerEditDays': 1,
       }),
     );
-    await assertSucceeds(save('mgr1', 't1', dayKey(-1)));
-    await assertFails(save('mgr1', 't1', dayKey(-4)));
+    await assertSucceeds(save(P.mgr1, 't1', dayKey(-1)));
+    await assertFails(save(P.mgr1, 't1', dayKey(-4)));
   });
 
-  test('the CEO corrects any team, any day', async () => {
-    await assertSucceeds(save('ceo1', 't1', dayKey(-40)));
-    await assertSucceeds(save('ceo1', 't3', dayKey()));
+  test('the director corrects any team, any day', async () => {
+    await assertSucceeds(save(P.ceo1, 't1', dayKey(-40)));
+    await assertSucceeds(save(P.ceo1, 't3', dayKey()));
   });
 
   test('a sheet must be valid', async () => {
     const d = dayKey();
     // The id must be {teamId}_{date}.
-    await assertFails(setDoc(sheetRef(as('mgr1'), 't1', d), sheet('mgr1', 't3', d)));
+    await assertFails(setDoc(sheetRef(as(P.mgr1), 't1', d), sheet(P.mgr1, 't3', d)));
     await assertFails(
-      setDoc(doc(as('mgr1'), 'companies', 'c1', 'attendance', 'x'), sheet('mgr1', 't1', d)),
+      setDoc(doc(as(P.mgr1), 'companies', 'c1', 'attendance', 'x'), sheet(P.mgr1, 't1', d)),
     );
-    await assertFails(save('mgr1', 't1', '2026-1-5'));
-    await assertFails(save('mgr1', 't1', d, { entries: [] }));
-    await assertFails(save('mgr1', 't1', d, { note: 'x' }));
-    // Saved under the saver's own uid, at the server's time.
-    await assertFails(save('mgr1', 't1', d, { markedBy: 'mgr3' }));
-    await assertFails(save('mgr1', 't1', d, { updatedAt: new Date() }));
-    // The team must exist (the CEO too).
-    await assertFails(save('ceo1', 'nope', d));
+    await assertFails(save(P.mgr1, 't1', '2026-1-5'));
+    await assertFails(save(P.mgr1, 't1', d, { entries: [] }));
+    await assertFails(save(P.mgr1, 't1', d, { note: 'x' }));
+    // Saved under the saver's own number, at the server's time.
+    await assertFails(save(P.mgr1, 't1', d, { markedBy: P.mgr3 }));
+    await assertFails(save(P.mgr1, 't1', d, { updatedAt: new Date() }));
+    // The team must exist (the director too).
+    await assertFails(save(P.ceo1, 'nope', d));
   });
 
   test('every member reads all sheets; nobody deletes them', async () => {
     const { collection, getDocs, query, where } = await import(
       'firebase/firestore'
     );
-    for (const uid of ['mgr1', 'mgr3', 'ceo1']) {
+    for (const uid of [P.mgr1, P.mgr3, P.ceo1]) {
       await assertSucceeds(
         getDocs(
           query(
@@ -871,17 +822,17 @@ describe('daily attendance (Phase 5)', () => {
         ),
       );
     }
-    await assertFails(deleteDoc(sheetRef(as('mgr3'), 't3', dayKey())));
-    await assertFails(deleteDoc(sheetRef(as('ceo1'), 't3', dayKey())));
+    await assertFails(deleteDoc(sheetRef(as(P.mgr3), 't3', dayKey())));
+    await assertFails(deleteDoc(sheetRef(as(P.ceo1), 't3', dayKey())));
   });
 
   test('deactivated managers and other firms are kept out', async () => {
     const d = dayKey();
-    await assertFails(save('gone1', 't1', d));
-    await assertFails(getDoc(sheetRef(as('gone1'), 't3', d)));
-    await assertFails(getDoc(sheetRef(as('ceo2'), 't3', d)));
-    await assertFails(getDoc(sheetRef(as('mgr2'), 't3', d)));
-    await assertFails(save('ceo2', 't1', d));
+    await assertFails(save(P.gone1, 't1', d));
+    await assertFails(getDoc(sheetRef(as(P.gone1), 't3', d)));
+    await assertFails(getDoc(sheetRef(as(P.ceo2), 't3', d)));
+    await assertFails(getDoc(sheetRef(as(P.mgr2), 't3', d)));
+    await assertFails(save(P.ceo2, 't1', d));
   });
 });
 
@@ -892,11 +843,7 @@ describe('sample firm, end to end', () => {
     new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
   const monthKey = () => dayKey().slice(0, 7);
 
-  const code = 'SHRE34';
   const firm = 'firm1';
-  const managerEmail = (username) =>
-    `${username}@${code.toLowerCase()}.login.daily-attendance-b1b1e.firebaseapp.com`;
-  const manager = (uid, username) => as(uid, managerEmail(username));
   const at = (db, ...path) => doc(db, 'companies', firm, ...path);
 
   /** The app's addEmployee: check the Emp ID is free, add, put on the list. */
@@ -948,9 +895,9 @@ describe('sample firm, end to end', () => {
     );
 
   test('sign up, set up, mark a week, report, then a manager leaves', async () => {
-    // 1. The CEO signs up and creates the firm.
-    const owner = as('owner');
-    await assertSucceeds(signUpBatch(owner, 'owner', firm, { code }).commit());
+    // 1. The director signs up and creates the firm.
+    const owner = as(P.owner);
+    await assertSucceeds(signUpBatch(owner, P.owner, firm).commit());
 
     // 2. Teams and two managers.
     for (const [id, name] of [['cut', 'Cutting'], ['sew', 'Stitching']]) {
@@ -959,17 +906,15 @@ describe('sample firm, end to end', () => {
       );
     }
     for (const [uid, username, teamIds] of [
-      ['m-ravi', 'ravi', ['cut']],
-      ['m-sita', 'sita', ['sew']],
+      [P['m-ravi'], 'ravi', ['cut']],
+      [P['m-sita'], 'sita', ['sew']],
     ]) {
       await assertSucceeds(
         setDoc(doc(owner, 'users', uid), {
           companyId: firm,
-          companyCode: code,
           role: 'manager',
           name: username,
-          username,
-          email: managerEmail(username),
+          phone: uid,
           teamIds,
           active: true,
           createdAt: serverTimestamp(),
@@ -977,16 +922,17 @@ describe('sample firm, end to end', () => {
       );
     }
 
-    // 3. Each manager logs in, reads their profile and the firm, adds staff.
-    const ravi = manager('m-ravi', 'ravi');
-    const sita = manager('m-sita', 'sita');
-    await assertSucceeds(getDoc(doc(ravi, 'users', 'm-ravi')));
+    // 3. The director adds the staff to each team; managers can't.
+    const ravi = as(P['m-ravi']);
+    const sita = as(P['m-sita']);
+    await assertSucceeds(getDoc(doc(ravi, 'users', P['m-ravi'])));
     await assertSucceeds(getDoc(at(ravi)));
-    await assertSucceeds(addEmployee(ravi, 'E101', 'Asha', 'cut', []));
-    await assertSucceeds(addEmployee(ravi, 'E102', 'Bilal', 'cut', ['E101']));
-    await assertSucceeds(addEmployee(sita, 'E201', 'Chitra', 'sew', []));
-    // An Emp ID can't be taken twice, even from another team.
-    await assert.rejects(addEmployee(sita, 'E101', 'Someone', 'sew', ['E201']));
+    await assert.rejects(addEmployee(ravi, 'E101', 'Asha', 'cut', []));
+    await assertSucceeds(addEmployee(owner, 'E101', 'Asha', 'cut', []));
+    await assertSucceeds(addEmployee(owner, 'E102', 'Bilal', 'cut', ['E101']));
+    await assertSucceeds(addEmployee(owner, 'E201', 'Chitra', 'sew', []));
+    // An Emp ID can't be taken twice, even in another team.
+    await assert.rejects(addEmployee(owner, 'E101', 'Someone', 'sew', ['E201']));
     // Ravi can't edit Sita's list.
     await assertFails(
       setDoc(at(ravi, 'rosters', `sew_${monthKey()}`), {
@@ -1002,7 +948,7 @@ describe('sample firm, end to end', () => {
       const date = dayKey(offset);
       const lent = offset === -2;
       await assertSucceeds(
-        saveDay(ravi, 'm-ravi', 'cut', date, {
+        saveDay(ravi, P['m-ravi'], 'cut', date, {
           E101: present('09:30', '18:30', 540),
           E102: lent
             ? { status: 'absent', workingIn: 'sew' }
@@ -1010,26 +956,26 @@ describe('sample firm, end to end', () => {
         }),
       );
       await assertSucceeds(
-        saveDay(sita, 'm-sita', 'sew', date, {
+        saveDay(sita, P['m-sita'], 'sew', date, {
           E201: offset === -3 ? { status: 'leave' } : present('09:30', '18:00', 510),
           ...(lent ? { E102: { ...present('09:30', '18:30', 540), guest: true } } : {}),
         }),
       );
     }
     // Nobody marks another team's day, or one outside the edit window.
-    await assertFails(saveDay(ravi, 'm-ravi', 'sew', dayKey(), {}));
-    await assertFails(saveDay(ravi, 'm-ravi', 'cut', dayKey(-20), {}));
+    await assertFails(saveDay(ravi, P['m-ravi'], 'sew', dayKey(), {}));
+    await assertFails(saveDay(ravi, P['m-ravi'], 'cut', dayKey(-20), {}));
 
-    // 5. The CEO's report sees every sheet; the CEO corrects an old day.
+    // 5. The director's report sees every sheet; the director corrects an old day.
     const week = await assertSucceeds(report(owner, dayKey(-6), dayKey()));
     assert.equal(week.size, 14);
     await assertSucceeds(
-      saveDay(owner, 'owner', 'cut', dayKey(-20), { E101: { status: 'leave' } }),
+      saveDay(owner, P.owner, 'cut', dayKey(-20), { E101: { status: 'leave' } }),
     );
     // A manager sees the other team's sheets too (for lent staff).
     await assertSucceeds(report(sita, dayKey(-6), dayKey()));
 
-    // 6. The CEO changes settings the way the Settings screen does.
+    // 6. The director changes settings the way the Settings screen does.
     await assertSucceeds(
       updateDoc(at(owner), {
         name: 'Shree Garments',
@@ -1037,38 +983,38 @@ describe('sample firm, end to end', () => {
       }),
     );
     // Now day -5 is outside Ravi's window.
-    await assertFails(saveDay(ravi, 'm-ravi', 'cut', dayKey(-5), {}));
+    await assertFails(saveDay(ravi, P['m-ravi'], 'cut', dayKey(-5), {}));
     await assertSucceeds(
-      saveDay(ravi, 'm-ravi', 'cut', dayKey(-1), { E101: present('09:30', '18:30', 540) }),
+      saveDay(ravi, P['m-ravi'], 'cut', dayKey(-1), { E101: present('09:30', '18:30', 540) }),
     );
 
-    // 7. Ravi leaves: the CEO deactivates him and gives Cutting to Sita.
+    // 7. Ravi leaves: the director deactivates him and gives Cutting to Sita.
     await assertSucceeds(
-      updateDoc(doc(owner, 'users', 'm-ravi'), { name: 'ravi', teamIds: [], active: false }),
+      updateDoc(doc(owner, 'users', P['m-ravi']), { name: 'ravi', teamIds: [], active: false }),
     );
     await assertSucceeds(
-      updateDoc(doc(owner, 'users', 'm-sita'), {
+      updateDoc(doc(owner, 'users', P['m-sita']), {
         name: 'sita',
         teamIds: ['sew', 'cut'],
         active: true,
       }),
     );
-    await assertFails(saveDay(ravi, 'm-ravi', 'cut', dayKey(), {}));
+    await assertFails(saveDay(ravi, P['m-ravi'], 'cut', dayKey(), {}));
     await assertFails(report(ravi, dayKey(-6), dayKey()));
     await assertSucceeds(
-      saveDay(sita, 'm-sita', 'cut', dayKey(), { E101: present('09:30', '18:30', 540) }),
+      saveDay(sita, P['m-sita'], 'cut', dayKey(), { E101: present('09:30', '18:30', 540) }),
     );
     // His past sheets stay, for the monthly report.
     await assertFails(deleteDoc(at(owner, 'attendance', `cut_${dayKey(-6)}`)));
 
     // 8. Another firm sees none of it.
-    const rival = as('rival');
+    const rival = as(P.rival);
     await assertSucceeds(
-      signUpBatch(rival, 'rival', 'firm2', { code: 'RVWX56' }).commit(),
+      signUpBatch(rival, P.rival, 'firm2').commit(),
     );
     await assertFails(report(rival, dayKey(-6), dayKey()));
     await assertFails(getDocs(collection(rival, 'companies', firm, 'employees')));
-    await assertFails(getDoc(doc(rival, 'users', 'm-sita')));
+    await assertFails(getDoc(doc(rival, 'users', P['m-sita'])));
     await assertFails(
       setDoc(at(rival, 'teams', 'x'), { name: 'Mine', createdAt: serverTimestamp() }),
     );

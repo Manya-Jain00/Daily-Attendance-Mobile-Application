@@ -25,48 +25,38 @@ void main() {
     return auth;
   }
 
-  Future<void> tapLogIn(WidgetTester tester) async {
-    final button = find.widgetWithText(FilledButton, 'Log in');
+  Future<void> tapButton(WidgetTester tester, String label) async {
+    final button = find.widgetWithText(FilledButton, label);
     await tester.ensureVisible(button);
     await tester.tap(button);
-  }
-
-  Future<void> chooseCeoLogin(WidgetTester tester) async {
-    await tester.tap(find.text('CEO'));
     await tester.pumpAndSettle();
   }
 
-  Future<void> logIn(WidgetTester tester, String email, String password) async {
-    await chooseCeoLogin(tester);
-    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), email);
+  Future<void> enterPhone(WidgetTester tester, String phone) async {
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Password'),
-      password,
+      find.widgetWithText(TextFormField, 'Mobile number'),
+      phone,
     );
-    await tapLogIn(tester);
-    await tester.pumpAndSettle();
+    await tapButton(tester, 'Send code');
   }
 
-  Future<void> logInManager(
-    WidgetTester tester,
-    String code,
-    String username,
-    String pin,
-  ) async {
-    Future<void> fill(String label, String text) =>
-        tester.enterText(find.widgetWithText(TextFormField, label), text);
-    await fill('Company code', code);
-    await fill('Username', username);
-    await fill('PIN', pin);
-    await tapLogIn(tester);
-    await tester.pumpAndSettle();
+  Future<void> enterCode(WidgetTester tester, String code) async {
+    await tester.enterText(find.widgetWithText(TextFormField, 'Code'), code);
+    await tapButton(tester, 'Log in');
   }
 
-  testWidgets('signed-out user sees the login screen', (tester) async {
+  Future<void> logIn(WidgetTester tester, String phone) async {
+    await enterPhone(tester, phone);
+    await enterCode(tester, FakeAuthService.goodCode);
+  }
+
+  testWidgets('signed-out user sees the phone login', (tester) async {
     await startApp(tester);
 
     expect(find.text('Daily Attendance'), findsOneWidget);
-    expect(find.text('Log in'), findsOneWidget);
+    expect(find.text('Send code'), findsOneWidget);
+    // One login for everyone: no director/manager switch.
+    expect(find.text('Director'), findsNothing);
   });
 
   testWidgets('shows the splash while the session is loading', (tester) async {
@@ -81,27 +71,26 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Log in'), findsNothing);
+    expect(find.text('Send code'), findsNothing);
   });
 
-  testWidgets('CEO logs in and lands on the CEO dashboard', (tester) async {
-    await startApp(tester);
-    await logIn(tester, 'ceo@test.com', 'password1');
+  testWidgets('the director logs in and lands on the director dashboard', (
+    tester,
+  ) async {
+    final auth = await startApp(tester);
+    // A local 10-digit number is taken as Indian.
+    await logIn(tester, '90000 00001');
 
+    expect(auth.codesSentTo, ['+919000000001']);
     for (final tab in ['Dashboard', 'Teams', 'Managers', 'Reports']) {
       expect(find.text(tab), findsWidgets);
     }
     expect(find.text('Past days'), findsNothing);
-    // The CEO sees the code to give to managers.
-    expect(find.text('ACME22'), findsOneWidget);
   });
 
-  testWidgets('manager logs in with company code, username and PIN', (
-    tester,
-  ) async {
+  testWidgets('a manager logs in with their number and code', (tester) async {
     await startApp(tester);
-    // Code and username are forgiving about case and spaces.
-    await logInManager(tester, 'acme22 ', 'Ravi', '123456');
+    await logIn(tester, '+91 90000 00011');
 
     for (final tab in ['Today', 'Employees', 'Past days']) {
       expect(find.text(tab), findsWidgets);
@@ -109,43 +98,46 @@ void main() {
     expect(find.text('Managers'), findsNothing);
   });
 
-  testWidgets('wrong password shows an error and stays on login', (
+  testWidgets('the code screen shows the number and can go back', (
     tester,
   ) async {
     await startApp(tester);
-    await logIn(tester, 'ceo@test.com', 'nope');
+    await enterPhone(tester, '9000000011');
 
-    expect(find.text('Wrong email or password.'), findsOneWidget);
-    expect(find.text('Welcome back'), findsOneWidget);
-  });
+    expect(find.textContaining('+91 90000 00011'), findsOneWidget);
+    expect(find.text('Send again in 30s'), findsOneWidget);
 
-  testWidgets('wrong PIN shows an error and stays on login', (tester) async {
-    await startApp(tester);
-    await logInManager(tester, 'ACME22', 'ravi', '000000');
-
-    expect(find.text('Wrong company code, username or PIN.'), findsOneWidget);
-    expect(find.text('Welcome back'), findsOneWidget);
-  });
-
-  testWidgets('empty manager form shows validation messages', (tester) async {
-    await startApp(tester);
-    await tapLogIn(tester);
+    await tester.tap(find.text('Change number'));
     await tester.pumpAndSettle();
-
-    expect(find.text('Enter your company code'), findsOneWidget);
-    expect(find.text('Enter your username'), findsOneWidget);
-    expect(find.text('Enter your PIN'), findsOneWidget);
-    expect(find.text('Forgot password?'), findsNothing);
+    expect(find.text('Send code'), findsOneWidget);
   });
 
-  testWidgets('empty CEO form shows validation messages', (tester) async {
+  testWidgets('a wrong code shows an error and stays on the code screen', (
+    tester,
+  ) async {
     await startApp(tester);
-    await chooseCeoLogin(tester);
-    await tapLogIn(tester);
-    await tester.pumpAndSettle();
+    await enterPhone(tester, '9000000011');
+    await enterCode(tester, '000000');
 
-    expect(find.text('Enter your email'), findsOneWidget);
-    expect(find.text('Enter your password'), findsOneWidget);
+    expect(
+      find.text('Wrong code. Check the SMS and try again.'),
+      findsOneWidget,
+    );
+    expect(find.text('Enter the code'), findsOneWidget);
+  });
+
+  testWidgets('checks the number and the code', (tester) async {
+    final auth = await startApp(tester);
+    await tapButton(tester, 'Send code');
+    expect(find.text('Enter the mobile number'), findsOneWidget);
+
+    await enterPhone(tester, '12345');
+    expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
+    expect(auth.codesSentTo, isEmpty);
+
+    await enterPhone(tester, '9000000011');
+    await enterCode(tester, '12');
+    expect(find.text('The code has 6 digits'), findsOneWidget);
   });
 
   testWidgets('log out returns to the login screen', (tester) async {
@@ -155,7 +147,7 @@ void main() {
     await tester.tap(find.byTooltip('Log out'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Send code'), findsOneWidget);
   });
 
   testWidgets('a deactivated account sees the problem screen', (tester) async {
@@ -167,59 +159,40 @@ void main() {
 
     await tester.tap(find.text('Back to login'));
     await tester.pumpAndSettle();
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Send code'), findsOneWidget);
   });
 
-  testWidgets('CEO sign-up creates the company and opens the CEO home', (
+  testWidgets('a new number sets up a company and opens the director home', (
     tester,
   ) async {
     await startApp(tester);
-    await tester.ensureVisible(find.text('Create a company account'));
-    await tester.tap(find.text('Create a company account'));
-    await tester.pumpAndSettle();
+    await logIn(tester, '9876543210');
+
+    expect(find.text('Set up a new company'), findsOneWidget);
+    // A manager who landed here is told what to do.
+    expect(find.textContaining('+91 98765 43210'), findsOneWidget);
 
     Future<void> fill(String label, String text) =>
         tester.enterText(find.widgetWithText(TextFormField, label), text);
     await fill('Company name', 'Acme Pvt Ltd');
     await fill('Your name', 'New Boss');
-    await fill('Email', 'boss@acme.com');
-    await fill('Password', 'longenough');
-    await tester.ensureVisible(find.text('Create account'));
-    await tester.tap(find.text('Create account'));
-    await tester.pumpAndSettle();
+    await tapButton(tester, 'Create company');
 
     expect(find.text('Dashboard'), findsWidgets);
-    expect(find.text('NEWC23'), findsOneWidget);
   });
 
-  testWidgets('sign-up rejects a short password', (tester) async {
-    await startApp(tester);
-    await tester.ensureVisible(find.text('Create a company account'));
-    await tester.tap(find.text('Create a company account'));
-    await tester.pumpAndSettle();
+  testWidgets('company set-up needs both names, and can log out', (
+    tester,
+  ) async {
+    await startApp(tester, initial: const NeedsCompany('+919876543210'));
+    await tapButton(tester, 'Create company');
 
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Password'),
-      'short',
-    );
-    await tester.ensureVisible(find.text('Create account'));
-    await tester.tap(find.text('Create account'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Use at least 8 characters'), findsOneWidget);
     expect(find.text('Enter the company name'), findsOneWidget);
-  });
+    expect(find.text('Enter your name'), findsOneWidget);
 
-  testWidgets('forgot password sends a reset email', (tester) async {
-    final auth = await startApp(tester);
-    await chooseCeoLogin(tester);
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Email'),
-      'ceo@test.com',
-    );
-    await tester.tap(find.text('Forgot password?'));
+    await tester.ensureVisible(find.text('Log out'));
+    await tester.tap(find.text('Log out'));
     await tester.pumpAndSettle();
-
-    expect(auth.resetEmails, ['ceo@test.com']);
+    expect(find.text('Send code'), findsOneWidget);
   });
 }

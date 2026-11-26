@@ -49,8 +49,8 @@ Future<void> shareWithPhone({
 String dihadiText(double value) =>
     value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
 
-/// CEO: every employee's attendance and Dihadi for a month (or any dates),
-/// shared as an Excel file for payroll (the CEO adds rates there).
+/// Director: every employee's attendance and Dihadi for a month (or any dates),
+/// shared as an Excel file for payroll (the director adds rates there).
 class ReportsPage extends StatefulWidget {
   const ReportsPage({
     super.key,
@@ -58,7 +58,7 @@ class ReportsPage extends StatefulWidget {
     this.share = shareWithPhone,
   });
 
-  /// Opened for the CEO ([EmployeeRepository.isCeo]).
+  /// Opened for the director ([EmployeeRepository.isDirector]).
   final EmployeeRepository repository;
 
   final ShareFile share;

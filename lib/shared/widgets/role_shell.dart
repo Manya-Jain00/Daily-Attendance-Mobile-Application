@@ -17,7 +17,7 @@ class ShellTab {
   final Widget page;
 }
 
-/// Home layout shared by the CEO and manager areas: gradient app bar,
+/// Home layout shared by the director and manager areas: gradient app bar,
 /// bottom navigation, and a log-out button.
 class RoleShell extends StatefulWidget {
   const RoleShell({super.key, required this.tabs});

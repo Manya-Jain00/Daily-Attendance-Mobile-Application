@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:daily_attendance/core/data/company_repository.dart';
-import 'package:daily_attendance/core/manager_login.dart';
 import 'package:daily_attendance/core/models/app_user.dart';
 import 'package:daily_attendance/core/models/company.dart';
 
@@ -9,14 +8,10 @@ import 'package:daily_attendance/core/models/company.dart';
 class FakeCompanyRepository implements CompanyRepository {
   Company company = const Company(
     name: 'Acme',
-    code: 'ACME22',
     settings: CompanySettings.defaults,
   );
   final teams = <Team>[];
   final managers = <AppUser>[];
-
-  /// username -> PIN, for logins made through [addManager].
-  final pins = <String, String>{};
 
   /// Employees per team id; a team with any can't be deleted.
   final employeeCounts = <String, int>{};
@@ -80,24 +75,18 @@ class FakeCompanyRepository implements CompanyRepository {
   @override
   Future<void> addManager({
     required String name,
-    required String username,
-    required String pin,
+    required String phone,
     required List<String> teamIds,
   }) async {
-    final clean = ManagerLogin.normalizeUsername(username);
-    if (pins.containsKey(clean) || managers.any((m) => m.username == clean)) {
-      throw DataFailure('The username "$clean" is already taken.');
+    if (managers.any((m) => m.phone == phone)) {
+      throw const DataFailure('This number is already used in the app.');
     }
-    pins[clean] = pin;
     managers.add(
       AppUser(
-        uid: 'manager-${_nextId++}',
+        phone: phone,
         companyId: 'company-1',
-        companyCode: company.code,
         role: UserRole.manager,
         name: name.trim(),
-        email: ManagerLogin.email(companyCode: company.code, username: clean),
-        username: clean,
         teamIds: teamIds,
       ),
     );
@@ -106,12 +95,12 @@ class FakeCompanyRepository implements CompanyRepository {
 
   @override
   Future<void> updateManager(
-    String uid, {
+    String phone, {
     required String name,
     required List<String> teamIds,
     required bool active,
   }) async {
-    final i = managers.indexWhere((m) => m.uid == uid);
+    final i = managers.indexWhere((m) => m.phone == phone);
     managers[i] = _copy(
       managers[i],
       name: name.trim(),
@@ -126,11 +115,7 @@ class FakeCompanyRepository implements CompanyRepository {
     required String name,
     required CompanySettings settings,
   }) async {
-    company = Company(
-      name: name.trim(),
-      code: company.code,
-      settings: settings,
-    );
+    company = Company(name: name.trim(), settings: settings);
     _changed();
   }
 
@@ -140,13 +125,10 @@ class FakeCompanyRepository implements CompanyRepository {
     List<String>? teamIds,
     bool? active,
   }) => AppUser(
-    uid: m.uid,
+    phone: m.phone,
     companyId: m.companyId,
-    companyCode: m.companyCode,
     role: m.role,
     name: name ?? m.name,
-    email: m.email,
-    username: m.username,
     teamIds: teamIds ?? m.teamIds,
     active: active ?? m.active,
   );

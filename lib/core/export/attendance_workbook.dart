@@ -7,7 +7,7 @@ import 'xlsx.dart';
 /// The report as an Excel workbook, laid out like the firm's paper sheets:
 ///
 /// 1. **Summary**: one line per employee with their Dihadi, an empty Daily
-///    rate for the CEO to fill in, and Pay (Dihadi × rate); a yellow total.
+///    rate for the director to fill in, and Pay (Dihadi × rate); a yellow total.
 /// 2. **All employees**: each employee's block one after another (title,
 ///    one row per day, yellow total), a printed page each.
 /// 3. One tab per employee with just their block.

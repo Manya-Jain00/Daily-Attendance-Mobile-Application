@@ -18,7 +18,7 @@ void main() {
       ..physicalSize = const Size(400, 1200)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final app = FakeAuthService(initial: const SignedIn(ceoUser));
+    final app = FakeAuthService(initial: const SignedIn(directorUser));
     await tester.pumpWidget(
       DailyAttendanceApp(
         auth: app,
@@ -62,7 +62,7 @@ void main() {
   setUp(() => repo = FakeCompanyRepository());
 
   group('teams', () {
-    testWidgets('the CEO adds a team', (tester) async {
+    testWidgets('the director adds a team', (tester) async {
       await openTab(tester, 'Teams');
       expect(find.text('No teams yet'), findsOneWidget);
 
@@ -129,7 +129,7 @@ void main() {
   });
 
   group('managers', () {
-    testWidgets('the CEO adds a manager and sees their login details', (
+    testWidgets('the director adds a manager by their mobile number', (
       tester,
     ) async {
       repo.teams
@@ -140,8 +140,7 @@ void main() {
 
       await tapButton(tester, 'Add manager');
       await fill(tester, 'Name', 'Ravi Kumar');
-      await fill(tester, 'Username', 'Ravi');
-      await fill(tester, 'PIN', '482913');
+      await fill(tester, 'Mobile number', '98765 43210');
       await tester.tap(find.widgetWithText(FilterChip, 'Sales'));
       await tester.tap(find.widgetWithText(FilterChip, 'Legal'));
       await tester.pump();
@@ -149,49 +148,40 @@ void main() {
 
       expect(find.text('Manager added'), findsOneWidget);
       expect(
-        find.text('Company code: ACME22\nUsername: ravi\nPIN: 482913'),
+        find.textContaining('Ravi Kumar can now log in with +91 98765 43210'),
         findsOneWidget,
       );
       await tapButton(tester, 'Done');
 
       final added = repo.managers.single;
       expect(added.name, 'Ravi Kumar');
-      expect(added.username, 'ravi');
+      expect(added.phone, '+919876543210');
       expect(added.teamIds, ['t2', 't1']);
-      expect(repo.pins['ravi'], '482913');
       // Back on the list, with their teams.
-      expect(find.text('ravi · Legal, Sales'), findsOneWidget);
+      expect(find.text('+91 98765 43210 · Legal, Sales'), findsOneWidget);
     });
 
-    testWidgets('checks the username and PIN', (tester) async {
+    testWidgets('checks the number', (tester) async {
       repo.managers.add(_manager('m1', 'Ravi'));
       await openTab(tester, 'Managers');
 
       await tapButton(tester, 'Add manager');
       await fill(tester, 'Name', 'Another Ravi');
-      await fill(tester, 'Username', 'RAVI');
-      await fill(tester, 'PIN', '123');
+      await fill(tester, 'Mobile number', '12345');
       await tapButton(tester, 'Add manager');
+      expect(find.text('Enter a valid 10-digit mobile number'), findsOneWidget);
 
-      expect(find.text('This username is already taken'), findsOneWidget);
-      expect(find.text('Use at least 6 digits'), findsOneWidget);
+      // Already in the company, typed another way.
+      await fill(tester, 'Mobile number', '+91 98000 00001');
+      await tapButton(tester, 'Add manager');
+      expect(
+        find.text('A manager with this number is already added'),
+        findsOneWidget,
+      );
       expect(repo.managers, hasLength(1));
     });
 
-    testWidgets('random PIN fills in 6 digits', (tester) async {
-      await openTab(tester, 'Managers');
-      await tapButton(tester, 'Add manager');
-
-      await tapTooltip(tester, 'Make a random PIN');
-
-      final pin = tester
-          .widget<TextFormField>(find.widgetWithText(TextFormField, 'PIN'))
-          .controller!
-          .text;
-      expect(pin, matches(RegExp(r'^\d{6}$')));
-    });
-
-    testWidgets('the CEO edits teams and deactivates a manager', (
+    testWidgets('the director edits teams and deactivates a manager', (
       tester,
     ) async {
       repo.teams
@@ -202,8 +192,9 @@ void main() {
 
       await tester.tap(find.text('Ravi'));
       await tester.pumpAndSettle();
-      // The username is part of the login, so it's shown but not editable.
-      expect(find.widgetWithText(TextFormField, 'Username'), findsNothing);
+      // The number is their login, so it's shown but not editable.
+      expect(find.widgetWithText(TextFormField, 'Mobile number'), findsNothing);
+      expect(find.text('+91 98000 00001'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(FilterChip, 'Legal'));
       await tester.tap(find.byType(Switch));
@@ -221,7 +212,9 @@ void main() {
   });
 
   group('settings', () {
-    testWidgets('the CEO changes the rules and saves them', (tester) async {
+    testWidgets('the director changes the rules and saves them', (
+      tester,
+    ) async {
       await openTab(tester, 'Settings');
       expect(find.text('9:30 AM'), findsOneWidget);
       expect(find.text('7 d'), findsOneWidget);
@@ -262,14 +255,12 @@ void main() {
   });
 }
 
-AppUser _manager(String uid, String name, {List<String> teamIds = const []}) =>
+/// [id] is 'm1' to 'm9', giving +919800000001 to +919800000009.
+AppUser _manager(String id, String name, {List<String> teamIds = const []}) =>
     AppUser(
-      uid: uid,
+      phone: '+91980000000${id.substring(1)}',
       companyId: 'company-1',
-      companyCode: 'ACME22',
       role: UserRole.manager,
       name: name,
-      email: '${name.toLowerCase()}@acme22.login.test',
-      username: name.toLowerCase(),
       teamIds: teamIds,
     );

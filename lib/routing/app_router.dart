@@ -3,22 +3,22 @@ import 'package:go_router/go_router.dart';
 import '../core/models/app_user.dart';
 import '../features/auth/account_problem_screen.dart';
 import '../features/auth/auth_service.dart';
+import '../features/auth/company_setup_screen.dart';
 import '../features/auth/login_screen.dart';
-import '../features/auth/signup_screen.dart';
 import '../features/auth/splash_screen.dart';
-import '../features/ceo/ceo_home_screen.dart';
+import '../features/director/director_home_screen.dart';
 import '../features/manager/manager_home_screen.dart';
 
 abstract final class AppRoutes {
   static const splash = '/';
   static const login = '/login';
-  static const signup = '/signup';
+  static const companySetup = '/company-setup';
   static const accountProblem = '/account-problem';
-  static const ceo = '/ceo';
+  static const director = '/director';
   static const manager = '/manager';
 
   static String homeFor(UserRole role) => switch (role) {
-    UserRole.ceo => ceo,
+    UserRole.director => director,
     UserRole.manager => manager,
   };
 }
@@ -40,16 +40,16 @@ GoRouter createAppRouter(AuthService auth) => GoRouter(
       builder: (context, state) => const LoginScreen(),
     ),
     GoRoute(
-      path: AppRoutes.signup,
-      builder: (context, state) => const SignupScreen(),
+      path: AppRoutes.companySetup,
+      builder: (context, state) => const CompanySetupScreen(),
     ),
     GoRoute(
       path: AppRoutes.accountProblem,
       builder: (context, state) => const AccountProblemScreen(),
     ),
     GoRoute(
-      path: AppRoutes.ceo,
-      builder: (context, state) => const CeoHomeScreen(),
+      path: AppRoutes.director,
+      builder: (context, state) => const DirectorHomeScreen(),
     ),
     GoRoute(
       path: AppRoutes.manager,
@@ -61,14 +61,16 @@ GoRouter createAppRouter(AuthService auth) => GoRouter(
 /// Where someone at [location] should be sent, or null to let them stay.
 String? redirectFor(Session session, String location) {
   final onAuthScreen =
-      location == AppRoutes.login || location == AppRoutes.signup;
+      location == AppRoutes.login || location == AppRoutes.companySetup;
 
   return switch (session) {
-    // Keep the login/sign-up form on screen (it shows its own spinner) so an
+    // Keep the login/set-up form on screen (it shows its own spinner) so an
     // error can still be shown there; everywhere else, wait on the splash.
     SessionLoading() =>
       onAuthScreen || location == AppRoutes.splash ? null : AppRoutes.splash,
-    SignedOut() => onAuthScreen ? null : AppRoutes.login,
+    SignedOut() => location == AppRoutes.login ? null : AppRoutes.login,
+    NeedsCompany() =>
+      location == AppRoutes.companySetup ? null : AppRoutes.companySetup,
     SessionProblem() =>
       location == AppRoutes.accountProblem ? null : AppRoutes.accountProblem,
     // Each role may only be in its own area.

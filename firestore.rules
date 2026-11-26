@@ -4,10 +4,11 @@ rules_version = '2';
 // Tests: firestore_tests/rules.test.js (npm test there; needs Java).
 //
 // Layout:
-//   users/{uid}                     one profile per login: companyId, role, ...
-//   companies/{companyId}           company name, login code, createdBy,
-//                                   office settings
-//   companyCodes/{code}             code -> companyId; keeps codes unique
+//   users/{phone}                   one profile per person, keyed by their
+//                                   mobile number (E.164, e.g. +919876543210),
+//                                   which is also their login: companyId,
+//                                   role, ...
+//   companies/{companyId}           company name, createdBy, office settings
 //   companies/{companyId}/teams     team names (who manages a team is on the
 //                                   manager's profile: users/{uid}.teamIds)
 //   companies/{companyId}/employees employees, keyed by Emp ID
@@ -25,8 +26,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userPath(uid) {
-      return /databases/$(database)/documents/users/$(uid);
+    function userPath(phone) {
+      return /databases/$(database)/documents/users/$(phone);
+    }
+
+    // Everyone logs in by phone (SMS code), so the token carries the number
+    // their profile is kept under. A login without one has no profile.
+    function myPhone() {
+      return request.auth.token.phone_number;
+    }
+
+    function hasPhone() {
+      return signedIn()
+        && request.auth.token.phone_number is string
+        && validPhone(request.auth.token.phone_number);
     }
 
     function companyPath(companyId) {
@@ -35,11 +48,11 @@ service cloud.firestore {
 
     // The caller's own profile. Only call after checking hasProfile().
     function me() {
-      return get(userPath(request.auth.uid)).data;
+      return get(userPath(myPhone())).data;
     }
 
     function hasProfile() {
-      return signedIn() && exists(userPath(request.auth.uid));
+      return hasPhone() && exists(userPath(myPhone()));
     }
 
     function isActiveMemberOf(companyId) {
@@ -48,8 +61,8 @@ service cloud.firestore {
         && me().companyId == companyId;
     }
 
-    function isCeoOf(companyId) {
-      return isActiveMemberOf(companyId) && me().role == 'ceo';
+    function isDirectorOf(companyId) {
+      return isActiveMemberOf(companyId) && me().role == 'director';
     }
 
     // Only call after checking hasProfile() (e.g. via isActiveMemberOf).
@@ -57,24 +70,13 @@ service cloud.firestore {
       return me().role == 'manager';
     }
 
-    // Company login codes: 6 characters with no look-alikes (0/O, 1/I/L).
-    function validCode(value) {
-      return value is string && value.matches('^[A-HJKMNP-Z2-9]{6}$');
-    }
-
-    function validUsername(value) {
-      return value is string && value.matches('^[a-z0-9][a-z0-9._-]{1,29}$');
+    // Mobile numbers in E.164 form, as Firebase puts them in the token.
+    function validPhone(value) {
+      return value is string && value.matches('^[+][1-9][0-9]{7,14}$');
     }
 
     function validName(value) {
       return value is string && value.size() > 0 && value.size() <= 100;
-    }
-
-    // The hidden login address the app builds from code + username
-    // (lib/core/manager_login.dart).
-    function managerEmail(data) {
-      return data.username + '@' + data.companyCode.lower()
-        + '.login.daily-attendance-b1b1e.firebaseapp.com';
     }
 
     function validTime(value) {
@@ -103,58 +105,56 @@ service cloud.firestore {
 
     function validUserFields(data) {
       return data.keys().hasOnly(
-               ['companyId', 'companyCode', 'role', 'name', 'email',
-                'username', 'teamIds', 'active', 'createdAt'])
+               ['companyId', 'role', 'name', 'phone', 'teamIds', 'active',
+                'createdAt'])
         && data.companyId is string
-        && data.role in ['ceo', 'manager']
+        && data.role in ['director', 'manager']
         && validName(data.name)
-        && data.email is string
         && data.teamIds is list
         && data.active is bool;
     }
 
     // ---- Users -------------------------------------------------------------
 
-    match /users/{uid} {
+    match /users/{phone} {
       // Everyone can read their own profile (the app needs it right after
-      // login). A CEO can read the profiles in their company.
-      allow read: if signedIn()
-        && (request.auth.uid == uid || isCeoOf(resource.data.companyId));
+      // login, and to find out it doesn't exist yet). A director can read the
+      // profiles in their company.
+      allow read: if hasPhone()
+        && (myPhone() == phone || isDirectorOf(resource.data.companyId));
 
-      // CEO sign-up: a brand-new login creates its own CEO profile in the
-      // same batch as the company it is creating. The company must not have
-      // existed before this write, and must name this login as its creator.
-      allow create: if signedIn()
-        && request.auth.uid == uid
+      // Company set-up: a login with no profile creates its own director
+      // profile in the same batch as the company it is creating. The company
+      // must not have existed before this write, and must name this login as
+      // its creator.
+      allow create: if hasPhone()
+        && myPhone() == phone
         && validUserFields(request.resource.data)
-        && request.resource.data.role == 'ceo'
+        && request.resource.data.phone == phone
+        && request.resource.data.role == 'director'
         && request.resource.data.active == true
         && request.resource.data.teamIds.size() == 0
-        && request.resource.data.email == request.auth.token.email
         && request.resource.data.createdAt == request.time
         && !exists(companyPath(request.resource.data.companyId))
         && getAfter(companyPath(request.resource.data.companyId))
-             .data.createdBy == uid
-        && request.resource.data.companyCode
-             == getAfter(companyPath(request.resource.data.companyId)).data.code;
+             .data.createdBy == phone;
 
-      // A CEO adds managers to their own company. Managers log in with
-      // company code + username, so both are required, the code must be
-      // their company's, and the email must be the login address built from
-      // them. (The app makes the login itself first, then this profile.)
+      // A director adds managers to their own company by mobile number. The
+      // manager can log in with it straight away. A number that is already
+      // in the app (any company) would be an update, not a create, so it is
+      // refused.
       allow create: if validUserFields(request.resource.data)
+        && validPhone(phone)
+        && request.resource.data.phone == phone
         && request.resource.data.role == 'manager'
+        && request.resource.data.active == true
         && request.resource.data.createdAt == request.time
-        && isCeoOf(request.resource.data.companyId)
-        && validUsername(request.resource.data.username)
-        && request.resource.data.companyCode
-             == get(companyPath(request.resource.data.companyId)).data.code
-        && request.resource.data.email == managerEmail(request.resource.data);
+        && isDirectorOf(request.resource.data.companyId);
 
-      // A CEO edits a manager in their company (name, teams, active). The
-      // company, code, role, email, username and creation time can't change.
+      // A director edits a manager in their company (name, teams, active).
+      // The company, role, number and creation time can't change.
       allow update: if resource.data.role == 'manager'
-        && isCeoOf(resource.data.companyId)
+        && isDirectorOf(resource.data.companyId)
         && validUserFields(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['name', 'teamIds', 'active']);
@@ -169,26 +169,22 @@ service cloud.firestore {
     match /companies/{companyId} {
       allow read: if isActiveMemberOf(companyId);
 
-      // Created only during CEO sign-up, together with the CEO's profile and
-      // the company's code. Someone who already belongs to a company can't
-      // create another.
-      allow create: if signedIn()
+      // Created only during company set-up, together with the director's
+      // profile. Someone who already belongs to a company can't create
+      // another.
+      allow create: if hasPhone()
         && !hasProfile()
         && request.resource.data.keys().hasOnly(
-             ['name', 'code', 'createdBy', 'createdAt', 'settings'])
+             ['name', 'createdBy', 'createdAt', 'settings'])
         && validName(request.resource.data.name)
-        && validCode(request.resource.data.code)
-        && getAfter(/databases/$(database)/documents/companyCodes/$(request.resource.data.code))
-             .data.companyId == companyId
-        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == myPhone()
         && request.resource.data.createdAt == request.time
         && validSettings(request.resource.data.settings)
-        && getAfter(userPath(request.auth.uid)).data.companyId == companyId
-        && getAfter(userPath(request.auth.uid)).data.role == 'ceo';
+        && getAfter(userPath(myPhone())).data.companyId == companyId
+        && getAfter(userPath(myPhone())).data.role == 'director';
 
-      // The CEO can rename the company and change its settings. The code
-      // never changes: managers' logins are built from it.
-      allow update: if isCeoOf(companyId)
+      // The director can rename the company and change its settings.
+      allow update: if isDirectorOf(companyId)
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['name', 'settings'])
         && validName(request.resource.data.name)
@@ -200,21 +196,22 @@ service cloud.firestore {
       // see which teams a colleague works in).
       match /teams/{teamId} {
         allow read: if isActiveMemberOf(companyId);
-        allow delete: if isCeoOf(companyId);
-        allow create: if isCeoOf(companyId)
+        allow delete: if isDirectorOf(companyId);
+        allow create: if isDirectorOf(companyId)
           && request.resource.data.keys().hasOnly(['name', 'createdAt'])
           && validName(request.resource.data.name)
           && request.resource.data.createdAt == request.time;
-        allow update: if isCeoOf(companyId)
+        allow update: if isDirectorOf(companyId)
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['name'])
           && validName(request.resource.data.name);
       }
 
       // Employees. The document id is the Emp ID, so Emp IDs are unique in
-      // the company. Which team someone works in is set month by month in
-      // the rosters below, so any active member can see the staff list and
-      // keep the details up to date.
+      // the company. Every active member can see the staff list (managers
+      // put people from it on their teams' monthly lists, below), but only
+      // the director adds employees, changes their details or deactivates
+      // them.
       match /employees/{empId} {
         function validEmployee(data) {
           return data.keys().hasOnly(
@@ -228,13 +225,13 @@ service cloud.firestore {
 
         allow read: if isActiveMemberOf(companyId);
 
-        allow create: if isActiveMemberOf(companyId)
+        allow create: if isDirectorOf(companyId)
           && validEmployee(request.resource.data)
           && request.resource.data.empId.matches('^[A-Z0-9][A-Z0-9-]{0,19}$')
           && request.resource.data.active == true
           && request.resource.data.createdAt == request.time;
 
-        allow update: if isActiveMemberOf(companyId)
+        allow update: if isDirectorOf(companyId)
           && validEmployee(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['name', 'designation', 'active']);
@@ -248,7 +245,7 @@ service cloud.firestore {
       // A month without one uses the latest earlier month's list. Managers
       // change only their own teams' lists, and only around this month (one
       // month either side, which also covers the time-zone gap at month
-      // ends); older lists are the CEO's to correct.
+      // ends); older lists are the director's to correct.
       match /rosters/{rosterId} {
         function monthNumber(month) {
           return int(month.split('-')[0]) * 12 + int(month.split('-')[1]);
@@ -278,7 +275,7 @@ service cloud.firestore {
 
         allow read: if isActiveMemberOf(companyId);
         allow create, update: if validRoster(request.resource.data)
-          && (isCeoOf(companyId) || managerMayEdit(request.resource.data));
+          && (isDirectorOf(companyId) || managerMayEdit(request.resource.data));
         allow delete: if false;
       }
 
@@ -287,7 +284,7 @@ service cloud.firestore {
       // Every member can read all sheets: a manager needs the other teams'
       // sheets to see who was lent to them for the day. Managers save only
       // their own teams' sheets, for today and the company's edit window
-      // before it; older days are the CEO's to correct.
+      // before it; older days are the director's to correct.
       match /attendance/{sheetId} {
         function dayOf(date) {
           return timestamp.date(
@@ -305,7 +302,7 @@ service cloud.firestore {
             && sheetId == data.teamId + '_' + data.date
             && data.entries is map
             && data.entries.size() <= 600
-            && data.markedBy == request.auth.uid
+            && data.markedBy == myPhone()
             && data.updatedAt == request.time
             && exists(/databases/$(database)/documents/companies/$(companyId)/teams/$(data.teamId));
         }
@@ -324,12 +321,12 @@ service cloud.firestore {
 
         allow read: if isActiveMemberOf(companyId);
         allow create, update: if validSheet(request.resource.data)
-          && (isCeoOf(companyId) || managerMayEdit(request.resource.data));
+          && (isDirectorOf(companyId) || managerMayEdit(request.resource.data));
         // Kept for the monthly report; a sheet is corrected, not deleted.
         allow delete: if false;
       }
 
-      // Anything else under a company: only the CEO. The collections above
+      // Anything else under a company: only the director. The collections above
       // are left out here, or this would bypass their checks (rules that
       // match the same document are combined with OR). {subcollection}
       // makes sure this never matches the company document itself
@@ -337,25 +334,8 @@ service cloud.firestore {
       match /{subcollection}/{document=**} {
         allow read, write:
           if !(subcollection in ['teams', 'employees', 'rosters', 'attendance'])
-          && isCeoOf(companyId);
+          && isDirectorOf(companyId);
       }
-    }
-
-    // ---- Company codes -----------------------------------------------------
-
-    // Claimed once, during CEO sign-up, for the company being created in the
-    // same batch. A taken code can't be overwritten (that would be an update),
-    // so codes stay unique. Nobody reads these: managers' logins are built
-    // from the code itself.
-    match /companyCodes/{code} {
-      allow create: if signedIn()
-        && validCode(code)
-        && request.resource.data.keys().hasOnly(['companyId'])
-        && !exists(companyPath(request.resource.data.companyId))
-        && getAfter(companyPath(request.resource.data.companyId)).data.code
-             == code
-        && getAfter(companyPath(request.resource.data.companyId)).data.createdBy
-             == request.auth.uid;
     }
 
     // Anything not matched above is denied.

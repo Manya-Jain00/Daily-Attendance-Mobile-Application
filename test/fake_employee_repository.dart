@@ -20,7 +20,7 @@ class FakeEmployeeRepository implements EmployeeRepository {
   List<String> myTeamIds = [];
 
   @override
-  bool isCeo = false;
+  bool isDirector = false;
 
   final _changes = StreamController<void>.broadcast();
 
