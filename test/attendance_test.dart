@@ -2,7 +2,9 @@ import 'package:daily_attendance/app.dart';
 import 'package:daily_attendance/core/models/attendance.dart';
 import 'package:daily_attendance/core/models/company.dart';
 import 'package:daily_attendance/core/models/day.dart';
+import 'package:daily_attendance/core/location/location_service.dart';
 import 'package:daily_attendance/core/models/employee.dart';
+import 'package:daily_attendance/core/models/geo.dart';
 import 'package:daily_attendance/core/models/roster.dart';
 import 'package:daily_attendance/features/auth/auth_service.dart';
 import 'package:daily_attendance/features/supervisor/attendance_page.dart';
@@ -90,6 +92,32 @@ void main() {
       expect(supervisorMayEdit(today.addDays(-7), today, rules), isTrue);
       expect(supervisorMayEdit(today.addDays(-8), today, rules), isFalse);
       expect(supervisorMayEdit(today.next, today, rules), isFalse);
+    });
+  });
+
+  group('locations', () {
+    test('distance between two points', () {
+      const a = GeoPoint(28.6139, 77.2090);
+      const b = GeoPoint(28.6339, 77.2090);
+      expect(a.distanceTo(b), closeTo(2224, 5));
+      expect(displayDistance(35.4), '35 m');
+      expect(displayDistance(2224), '2.2 km');
+    });
+
+    test('the office location is kept in the settings', () {
+      final s = rules.withOffice(const GeoPoint(28.6, 77.2));
+      final back = CompanySettings.fromMap(s.toMap());
+      expect(back, s);
+      expect(back.isFarFromOffice(const GeoPoint(28.6, 77.2)), isFalse);
+      expect(back.isFarFromOffice(const GeoPoint(28.61, 77.2)), isTrue);
+      expect(rules.isFarFromOffice(const GeoPoint(0, 0)), isFalse);
+    });
+
+    test('a map link needs no key', () {
+      expect(
+        const GeoPoint(28.6, 77.2).mapsUri.toString(),
+        'https://www.google.com/maps/search/?api=1&query=28.6%2C77.2',
+      );
     });
   });
 
@@ -324,6 +352,187 @@ void main() {
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.text('Done · 2 marked'), findsOneWidget);
+    });
+
+    group('entry time and location', () {
+      Future<void> save(WidgetTester tester) =>
+          tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+      Future<void> openAsDirector(WidgetTester tester) async {
+        tester.view
+          ..physicalSize = const Size(420, 1400)
+          ..devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AttendancePage(
+              repository: repo,
+              date: today,
+              teamId: 'team-1',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      /// Taps Save; the save button spins while a location dialog is open,
+      /// so this doesn't wait for everything to settle.
+      Future<void> saveToDialog(WidgetTester tester, String label) async {
+        await tester.ensureVisible(find.widgetWithText(FilledButton, label));
+        await tester.tap(find.widgetWithText(FilledButton, label));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      /// Taps a dialog button, then lets the save finish.
+      Future<void> answer(WidgetTester tester, String button) async {
+        await tester.tap(find.text(button));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      testWidgets('a supervisor save is stamped with time, name and place', (
+        tester,
+      ) async {
+        await start(tester);
+        await tap(tester, find.text('Mark everyone present'));
+        await save(tester);
+
+        expect(repo.savedLocations, [FakeLocationService.office]);
+        final stamp = repo.savedSheet('team-1', today)!.entries['E1']!.stamp!;
+        expect(stamp.byName, 'Sunita');
+        expect(stamp.location, FakeLocationService.office);
+        expect(find.textContaining('9:42 AM by Sunita'), findsNWidgets(2));
+        // The supervisor doesn't get the map link; the director does.
+        expect(find.text('Map'), findsNothing);
+      });
+
+      testWidgets('only changed entries get a new stamp', (tester) async {
+        final earlier = EntryStamp(
+          byPhone: '+919800000002',
+          byName: 'Ravi',
+          at: DateTime(2026, 11, 27, 9, 5),
+        );
+        repo.sheets.add(
+          AttendanceSheet(
+            teamId: 'team-1',
+            date: today,
+            entries: {
+              for (final id in ['E1', 'E2'])
+                id: AttendanceEntry.mark(
+                  AttendanceStatus.present,
+                  inTime: '09:30',
+                  settings: rules,
+                ).withStamp(earlier),
+            },
+          ),
+        );
+        await start(tester);
+        await tap(tester, statusButton('Bala', 'Absent'));
+        await save(tester);
+
+        final saved = repo.savedSheet('team-1', today)!.entries;
+        expect(saved['E1']!.stamp!.byName, 'Ravi');
+        expect(saved['E2']!.stamp!.byName, 'Sunita');
+      });
+
+      testWidgets('saving is blocked while location is off', (tester) async {
+        repo.location.result = const LocationOff();
+        await start(tester);
+        await tap(tester, statusButton('Asha', 'Present'));
+        await saveToDialog(tester, 'Save (1 not marked)');
+
+        expect(find.text('Turn on location'), findsOneWidget);
+        await answer(tester, 'Open settings');
+        await tester.pumpAndSettle();
+        expect(repo.location.locationSettingsOpened, 1);
+        expect(repo.savedSheet('team-1', today), isNull);
+        // The changes are kept for when location is on.
+        expect(
+          find.widgetWithText(FilledButton, 'Save (1 not marked)'),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('asks for permission first, then saves', (tester) async {
+        repo.location.result = const LocationNotAllowed();
+        await start(tester);
+        await tap(tester, find.text('Mark everyone present'));
+        await saveToDialog(tester, 'Save');
+
+        expect(find.text('Allow location'), findsOneWidget);
+        await answer(tester, 'Continue');
+        await tester.pumpAndSettle();
+        expect(repo.location.permissionRequests, 1);
+        expect(repo.savedSheet('team-1', today), isNotNull);
+      });
+
+      testWidgets('refusing permission does not save', (tester) async {
+        repo.location
+          ..result = const LocationNotAllowed()
+          ..allow = false;
+        await start(tester);
+        await tap(tester, find.text('Mark everyone present'));
+        await saveToDialog(tester, 'Save');
+        await answer(tester, 'Continue');
+
+        expect(find.text('Location is needed to save.'), findsOneWidget);
+        expect(repo.savedSheet('team-1', today), isNull);
+      });
+
+      testWidgets('the director saves without a location', (tester) async {
+        repo
+          ..isDirector = true
+          ..location.result = const LocationOff();
+        await openAsDirector(tester);
+        await tap(tester, find.text('Mark everyone present'));
+        await save(tester);
+
+        expect(repo.savedLocations, [null]);
+        expect(find.textContaining('no location'), findsNWidgets(2));
+      });
+
+      testWidgets('the director sees entries far from the office flagged', (
+        tester,
+      ) async {
+        // About 2.2 km north of the office.
+        const far = EntryLocation(
+          point: GeoPoint(28.6339, 77.2090),
+          accuracy: 15,
+        );
+        const faked = EntryLocation(
+          point: GeoPoint(28.6140, 77.2090),
+          accuracy: 5,
+          mocked: true,
+        );
+        repo
+          ..isAccountant = true
+          ..settings = rules.withOffice(FakeLocationService.office.point);
+        AttendanceEntry at(EntryLocation where) =>
+            AttendanceEntry.mark(
+              AttendanceStatus.present,
+              inTime: '09:30',
+              settings: rules,
+            ).withStamp(
+              EntryStamp(byPhone: '+91', byName: 'Ravi', location: where),
+            );
+        repo.sheets.add(
+          AttendanceSheet(
+            teamId: 'team-1',
+            date: today,
+            entries: {'E1': at(far), 'E2': at(faked)},
+          ),
+        );
+        await openAsDirector(tester);
+
+        expect(find.text('· 2.2 km from office'), findsOneWidget);
+        expect(
+          find.text('· 11 m from office · location may be faked'),
+          findsOneWidget,
+        );
+        expect(find.text('Map'), findsNWidgets(2));
+      });
     });
   });
 }

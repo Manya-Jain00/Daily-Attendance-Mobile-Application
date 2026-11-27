@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:daily_attendance/core/models/app_user.dart';
 import 'package:daily_attendance/features/auth/auth_service.dart';
 
@@ -58,6 +60,15 @@ class FakeAuthService extends AuthService {
       name: name.trim(),
     );
     profiles[current.phone] = user;
+    session = SignedIn(user);
+  }
+
+  @override
+  Future<void> setMyPhoto(Uint8List? photo) async {
+    final current = session;
+    if (current is! SignedIn) throw const AuthFailure('Log in first.');
+    final user = current.user.withPhoto(photo);
+    profiles[user.phone] = user;
     session = SignedIn(user);
   }
 

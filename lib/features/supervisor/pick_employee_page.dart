@@ -6,6 +6,8 @@ import '../../core/models/employee.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
 import 'employees_page.dart';
+import '../../shared/widgets/person_avatar.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Put someone already in the company on a team's monthly list. This is how
 /// a supervisor adds people to their teams: only the director creates new
@@ -95,7 +97,6 @@ class _PickEmployeePageState extends State<PickEmployeePage> {
                 e.empId.toLowerCase().contains(query)))
           e,
     ];
-    final theme = Theme.of(context);
     return Scaffold(
       appBar: BrandAppBar(title: 'Add to ${widget.list.team.name}'),
       body: Column(
@@ -126,12 +127,13 @@ class _PickEmployeePageState extends State<PickEmployeePage> {
                         'Everyone in the company is already on this list.',
                       (true, false) =>
                         'Everyone in the company is already on this list. '
-                            'Ask your director to add anyone new.',
+                            'Ask your ${namesOf(context).director.word} to add anyone new.',
                       (false, true) =>
-                        'Check the spelling, or add them as a new employee.',
+                        'Check the spelling, or add them as a new '
+                            '${namesOf(context).employee.word}.',
                       (false, false) =>
                         'Check the spelling. Someone new is added by your '
-                            'director.',
+                            '${namesOf(context).director.word}.',
                     },
                   )
                 : ListView.separated(
@@ -144,11 +146,10 @@ class _PickEmployeePageState extends State<PickEmployeePage> {
                       return Card(
                         child: ListTile(
                           onTap: _busy ? null : () => _pick(e),
-                          leading: CircleAvatar(
-                            backgroundColor: theme.colorScheme.primaryContainer,
-                            foregroundColor:
-                                theme.colorScheme.onPrimaryContainer,
-                            child: Text(initialOf(e.name)),
+                          leading: PersonAvatar(
+                            name: e.name,
+                            photo: e.photo,
+                            enlargeOnTap: false,
                           ),
                           title: Text(e.name),
                           subtitle: Text(

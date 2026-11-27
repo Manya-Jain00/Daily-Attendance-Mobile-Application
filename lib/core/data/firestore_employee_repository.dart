@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../location/location_service.dart';
 import '../models/app_user.dart';
 import '../models/attendance.dart';
 import '../models/company.dart';
 import '../models/day.dart';
 import '../models/employee.dart';
+import '../models/geo.dart';
 import '../models/month.dart';
 import '../models/roster.dart';
 import 'company_repository.dart';
@@ -17,11 +21,17 @@ import 'firestore_helpers.dart';
 /// [supervisor] is the profile at the time this was opened; open a new one when
 /// the supervisor's teams change.
 class FirestoreEmployeeRepository implements EmployeeRepository {
-  FirestoreEmployeeRepository(this.supervisor, {FirebaseFirestore? firestore})
-    : _db = firestore ?? FirebaseFirestore.instance;
+  FirestoreEmployeeRepository(
+    this.supervisor, {
+    FirebaseFirestore? firestore,
+    this.location = const DeviceLocationService(),
+  }) : _db = firestore ?? FirebaseFirestore.instance;
 
   final AppUser supervisor;
   final FirebaseFirestore _db;
+
+  @override
+  final LocationService location;
 
   DocumentReference<Map<String, dynamic>> get _company =>
       _db.collection('companies').doc(supervisor.companyId);
@@ -60,7 +70,10 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
   Stream<List<Employee>> watchEmployees() => friendlyErrors(
     _employees.snapshots().map(
       (q) =>
-          q.docs.map((d) => Employee.fromMap(d.id, d.data())).nonNulls.toList()
+          q.docs
+              .map((d) => Employee.fromMap(d.id, plainData(d.data())))
+              .nonNulls
+              .toList()
             ..sort(Employee.compareByEmpId),
     ),
   );
@@ -137,6 +150,12 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
   );
 
   @override
+  Future<void> setEmployeePhoto(String empId, Uint8List? photo) =>
+      guardFirestore(
+        () => _employees.doc(empId).update({'photo': photoValue(photo)}),
+      );
+
+  @override
   Future<void> saveRoster(String teamId, Month month, List<String> empIds) =>
       guardFirestore(
         () => _rosters
@@ -161,7 +180,7 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
             .snapshots()
             .map(
               (q) => q.docs
-                  .map((d) => AttendanceSheet.fromMap(d.data()))
+                  .map((d) => AttendanceSheet.fromMap(plainData(d.data())))
                   .nonNulls
                   .toList(),
             ),
@@ -171,16 +190,40 @@ class FirestoreEmployeeRepository implements EmployeeRepository {
   Future<void> saveAttendance(
     String teamId,
     Day date,
-    Map<String, AttendanceEntry> entries,
-  ) => guardFirestore(
+    Map<String, AttendanceEntry> entries, {
+    EntryLocation? location,
+  }) => guardFirestore(
     () => _attendance.doc(AttendanceSheet.docId(teamId, date)).set({
       'teamId': teamId,
       'date': date.key,
-      'entries': {for (final e in entries.entries) e.key: e.value.toMap()},
+      'entries': {
+        for (final e in entries.entries)
+          e.key: {...e.value.toMap(), ..._stampData(e.value.stamp, location)},
+      },
       'markedBy': supervisor.phone,
       'updatedAt': FieldValue.serverTimestamp(),
     }),
   );
+
+  /// A kept stamp as it was, or a new one for a new or changed entry.
+  Map<String, Object> _stampData(EntryStamp? kept, EntryLocation? location) {
+    if (kept != null) {
+      return {
+        'markedBy': kept.byPhone,
+        if (kept.byName.isNotEmpty) 'markedByName': kept.byName,
+        'markedAt': kept.at == null
+            ? FieldValue.serverTimestamp()
+            : Timestamp.fromDate(kept.at!),
+        if (kept.location case final l?) 'location': l.toMap(),
+      };
+    }
+    return {
+      'markedBy': supervisor.phone,
+      if (supervisor.name.isNotEmpty) 'markedByName': supervisor.name,
+      'markedAt': FieldValue.serverTimestamp(),
+      if (location != null) 'location': location.toMap(),
+    };
+  }
 
   Map<String, Object> _rosterData(
     String teamId,

@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
 import '../supervisor/attendance_page.dart';
 import 'employee_history_page.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Director: how every team's day is going (today, or any earlier day), and the
 /// way into each team's full sheet and each employee's history.
@@ -137,7 +138,9 @@ class _DashboardPageState extends State<DashboardPage> {
                         child: ListTile(
                           onTap: _openHistory,
                           leading: const Icon(Icons.manage_search),
-                          title: const Text('Employee history'),
+                          title: Text(
+                            '${namesOf(context).employee.title} history',
+                          ),
                           subtitle: const Text(
                             "One person's attendance over any dates",
                           ),
@@ -162,9 +165,9 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: Icons.groups_outlined,
             title: 'No teams yet',
             message: _repo.isAccountant
-                ? "The director has not added any teams yet. Each team's "
-                      'attendance then shows here.'
-                : 'Add teams and supervisors on the Teams and People tabs. '
+                ? 'The ${namesOf(context).director.word} has not added any teams yet. Each '
+                      "team's attendance then shows here."
+                : 'Add teams and ${namesOf(context).supervisor.words} on the Teams and People tabs. '
                       "Each team's attendance then shows here.",
           ),
         ),

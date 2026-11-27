@@ -16,7 +16,8 @@ import '../../core/models/roster.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
 import '../../shared/widgets/month_selector.dart';
-import '../supervisor/employees_page.dart' show initialOf;
+import '../../shared/widgets/person_avatar.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Hands a finished file to the phone's share sheet (WhatsApp, email,
 /// Drive, …). [origin] is where the button is, for tablets.
@@ -131,7 +132,7 @@ class _ReportsPageState extends State<ReportsPage> {
     try {
       await widget.share(
         fileName: report.fileName,
-        bytes: attendanceWorkbook(report, teamNames),
+        bytes: attendanceWorkbook(report, teamNames, names: namesOf(context)),
         mimeType: xlsxMimeType,
         subject: 'Attendance, ${report.period.label}',
         origin: origin,
@@ -205,13 +206,13 @@ class _ReportsPageState extends State<ReportsPage> {
       children: [
         header,
         if (report.rows.isEmpty)
-          const SizedBox(
+          SizedBox(
             height: 320,
             child: EmptyState(
               icon: Icons.insert_chart_outlined,
               title: 'Nothing on these dates',
               message:
-                  'No employee was on a team list or marked by a team on '
+                  'No ${namesOf(context).employee.word} was on a team list or marked by a team on '
                   'these dates.',
             ),
           )
@@ -347,7 +348,7 @@ class _TotalsCard extends StatelessWidget {
           children: [
             Text(
               [
-                '$people ${people == 1 ? 'employee' : 'employees'}',
+                '$people ${people == 1 ? namesOf(context).employee.word : namesOf(context).employee.words}',
                 if (report.period.contains(Day.today())) 'so far, up to today',
               ].join(' · '),
               style: theme.textTheme.titleSmall,
@@ -432,11 +433,7 @@ class _EmployeeCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  foregroundColor: theme.colorScheme.onPrimaryContainer,
-                  child: Text(initialOf(e.name)),
-                ),
+                PersonAvatar(name: e.name, photo: e.photo),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

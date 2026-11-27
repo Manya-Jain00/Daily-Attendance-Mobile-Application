@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../models/app_user.dart';
@@ -57,6 +59,9 @@ abstract class CompanyRepository {
     required String name,
     required bool active,
   });
+
+  /// Sets or (with null) removes a supervisor's or accountant's photo.
+  Future<void> setPersonPhoto(String phone, Uint8List? photo);
 
   Future<void> updateCompany({
     required String name,

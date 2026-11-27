@@ -5,6 +5,7 @@ import '../../core/models/app_user.dart';
 import '../../core/models/company.dart';
 import '../../shared/widgets/load_state.dart';
 import '../auth/form_validators.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Director: create, rename and delete teams, and see who supervises each one.
 /// With [readOnly] (the accountant's) the teams are only listed.
@@ -56,7 +57,7 @@ class _TeamsPageState extends State<TeamsPage> {
         content: Text(
           supervisorCount == 0
               ? 'This cannot be undone.'
-              : 'Its ${supervisorCount == 1 ? 'supervisor' : '$supervisorCount supervisors'} '
+              : 'Its ${supervisorCount == 1 ? namesOf(context).supervisor.word : '$supervisorCount ${namesOf(context).supervisor.words}'} '
                     'will no longer be assigned to it. This cannot be undone.',
         ),
         actions: [
@@ -124,9 +125,9 @@ class _TeamsPageState extends State<TeamsPage> {
         icon: Icons.groups_outlined,
         title: 'No teams yet',
         message: widget.readOnly
-            ? 'The director has not added any teams yet.'
+            ? 'The ${namesOf(context).director.word} has not added any teams yet.'
             : 'Add your teams, such as Marketing, Finance or Legal. Then add '
-                  'supervisors and assign them to teams.',
+                  '${namesOf(context).supervisor.words} and assign them to teams.',
       );
     }
     final theme = Theme.of(context);
@@ -151,7 +152,9 @@ class _TeamsPageState extends State<TeamsPage> {
             ),
             title: Text(team.name),
             subtitle: Text(
-              names.isEmpty ? 'No supervisor yet' : names.join(', '),
+              names.isEmpty
+                  ? 'No ${namesOf(context).supervisor.word} yet'
+                  : names.join(', '),
               style: names.isEmpty
                   ? TextStyle(color: theme.colorScheme.error)
                   : null,

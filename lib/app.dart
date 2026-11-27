@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/auth_scope.dart';
 import 'features/auth/auth_service.dart';
 import 'routing/app_router.dart';
+import 'shared/widgets/role_names_scope.dart';
 
 class DailyAttendanceApp extends StatefulWidget {
   const DailyAttendanceApp({
@@ -48,6 +49,7 @@ class _DailyAttendanceAppState extends State<DailyAttendanceApp> {
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light,
             routerConfig: _router,
+            builder: (context, child) => RoleNamesHost(child: child!),
           ),
         ),
       ),

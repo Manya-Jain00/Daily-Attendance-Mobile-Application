@@ -6,13 +6,16 @@ import '../../core/models/attendance.dart';
 import '../../core/models/company.dart';
 import '../../core/models/day.dart';
 import '../../core/models/employee.dart';
+import '../../core/models/geo.dart';
 import '../../core/models/roster.dart';
 import '../../core/models/team_day.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
-import 'employees_page.dart' show initialOf;
+import '../../shared/widgets/location_prompt.dart';
+import '../../shared/widgets/person_avatar.dart';
 import 'pick_guest_page.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Whether a supervisor may still change [date]'s attendance: today and the
 /// company's edit window before it. Older days are the director's to correct.
@@ -269,7 +272,25 @@ class _AttendancePageState extends State<AttendancePage> {
     if (_draft == null || _saving) return;
     setState(() => _saving = true);
     try {
-      await _repo.saveAttendance(team.id, _date, entriesToSave(_rows));
+      // A supervisor's entries carry where the phone was. The director's
+      // corrections don't need it.
+      EntryLocation? location;
+      if (!_repo.isDirector) {
+        location = await askLocation(
+          context,
+          _repo.location,
+          why:
+              'Attendance is saved with where your phone is, so the '
+              '${namesOf(context).director.word} can see it was marked at work.',
+        );
+        if (location == null || !mounted) return;
+      }
+      await _repo.saveAttendance(
+        team.id,
+        _date,
+        entriesToSave(_rows),
+        location: location,
+      );
       if (!mounted) return;
       setState(() => _draft = null);
       showMessage(context, '${team.name} saved for ${_date.label}');
@@ -396,8 +417,9 @@ class _AttendancePageState extends State<AttendancePage> {
         message: isDirector
             ? 'Add teams on the Teams tab first.'
             : isAccountant
-            ? 'The director has not added any teams yet.'
-            : 'You have not been given a team yet. Ask your director to assign '
+            ? 'The ${namesOf(context).director.word} has not added any teams yet.'
+            : 'You have not been given a team yet. Ask your ${namesOf(context).director.word} to '
+                  'assign '
                   'you one.',
       );
     }
@@ -444,7 +466,7 @@ class _AttendancePageState extends State<AttendancePage> {
               : isAccountant
               ? 'View only.'
               : 'Older than ${settings.supervisorEditDays} days: view only. Ask '
-                    'your director to correct it.',
+                    'your ${namesOf(context).director.word} to correct it.',
         ),
       if (rows.isNotEmpty)
         _Summary(
@@ -492,10 +514,11 @@ class _AttendancePageState extends State<AttendancePage> {
               icon: Icons.people_outline,
               title: 'Nobody on the list',
               message: seesAllTeams
-                  ? "${team.name}'s supervisors put people on its list on their "
-                        'Employees tab. They then show here every day.'
+                  ? "${team.name}'s ${namesOf(context).supervisor.words} put people on its list on "
+                        'their ${namesOf(context).employee.titles} tab. They then show here every '
+                        'day.'
                   : 'Add the people who work in ${team.name} on the '
-                        'Employees tab. They then show here every day.',
+                        '${namesOf(context).employee.titles} tab. They then show here every day.',
             ),
           ),
           ?addGuest,
@@ -509,6 +532,8 @@ class _AttendancePageState extends State<AttendancePage> {
             key: ValueKey(row.empId),
             row: row,
             editable: editable && !_saving,
+            showWhere: seesAllTeams,
+            settings: settings,
             lentToName: row.lentTo == null
                 ? null
                 : teamNames[row.lentTo] ?? 'another team',
@@ -707,6 +732,8 @@ class _RowCard extends StatelessWidget {
     super.key,
     required this.row,
     required this.editable,
+    required this.showWhere,
+    required this.settings,
     required this.lentToName,
     required this.onStatus,
     required this.onInTime,
@@ -716,6 +743,10 @@ class _RowCard extends StatelessWidget {
 
   final SheetRow row;
   final bool editable;
+
+  /// Show where each entry was saved (director and accountant).
+  final bool showWhere;
+  final CompanySettings settings;
   final String? lentToName;
   final ValueChanged<AttendanceStatus> onStatus;
   final VoidCallback onInTime;
@@ -747,19 +778,31 @@ class _RowCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: entry == null
-                      ? theme.colorScheme.surfaceContainerHighest
-                      : statusColor(entry.status).withValues(alpha: 0.15),
-                  foregroundColor: entry == null
-                      ? muted
-                      : statusColor(entry.status),
-                  child: Text(
-                    entry == null ? initialOf(row.name) : entry.status.letter,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                if (employee?.photo case final photo?)
+                  // A face, for supervisors who can't read the names. The
+                  // ring shows how they're marked.
+                  PersonAvatar(
+                    name: row.name,
+                    photo: photo,
+                    radius: 26,
+                    ringColor: entry == null
+                        ? theme.colorScheme.outlineVariant
+                        : statusColor(entry.status),
+                  )
+                else
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: entry == null
+                        ? theme.colorScheme.surfaceContainerHighest
+                        : statusColor(entry.status).withValues(alpha: 0.15),
+                    foregroundColor: entry == null
+                        ? muted
+                        : statusColor(entry.status),
+                    child: Text(
+                      entry == null ? initialOf(row.name) : entry.status.letter,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
-                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -849,11 +892,128 @@ class _RowCard extends StatelessWidget {
                 ),
               ],
             ],
+            if (entry?.stamp case final stamp? when lentToName == null)
+              _StampLine(
+                stamp: stamp,
+                showWhere: showWhere,
+                settings: settings,
+              ),
           ],
         ),
       ),
     );
   }
+}
+
+/// "Marked 9:42 AM by Sunita", and for the director where the phone was:
+/// "35 m from office · Map", flagged red when far away or faked.
+class _StampLine extends StatelessWidget {
+  const _StampLine({
+    required this.stamp,
+    required this.showWhere,
+    required this.settings,
+  });
+
+  final EntryStamp stamp;
+  final bool showWhere;
+  final CompanySettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final style = theme.textTheme.bodySmall?.copyWith(color: muted);
+    final at = stamp.at;
+    final who = stamp.byName.isNotEmpty ? stamp.byName : stamp.byPhone;
+    final when = at == null ? 'just now' : markedTimeText(at.toLocal());
+
+    final location = stamp.location;
+    String? where;
+    var warn = false;
+    if (showWhere && location != null) {
+      final office = settings.office;
+      if (office != null) {
+        where =
+            '${displayDistance(office.distanceTo(location.point))} from office';
+        warn = settings.isFarFromOffice(location.point);
+      }
+      if (location.mocked) {
+        where = [?where, 'location may be faked'].join(' · ');
+        warn = true;
+      }
+    }
+    final warnColor = theme.colorScheme.error;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, left: 4),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        children: [
+          Icon(Icons.history, size: 14, color: muted),
+          Text('Marked $when by $who', style: style),
+          if (showWhere && location == null)
+            Text('· no location', style: style),
+          if (where != null)
+            Text(
+              '· $where',
+              style: style?.copyWith(
+                color: warn ? warnColor : muted,
+                fontWeight: warn ? FontWeight.w700 : null,
+              ),
+            ),
+          if (showWhere && location != null)
+            InkWell(
+              onTap: () => openMap(context, location.point),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.place_outlined,
+                      size: 14,
+                      color: warn ? warnColor : theme.colorScheme.primary,
+                    ),
+                    Text(
+                      'Map',
+                      style: style?.copyWith(
+                        color: warn ? warnColor : theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "9:42 AM", or "26 Nov, 9:42 AM" when not today.
+String markedTimeText(DateTime at, [DateTime? now]) {
+  now ??= DateTime.now();
+  final time = displayTime(timeOf(at.hour * 60 + at.minute));
+  final sameDay =
+      at.year == now.year && at.month == now.month && at.day == now.day;
+  if (sameDay) return time;
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${at.day} ${months[at.month - 1]}, $time';
 }
 
 Color statusColor(AttendanceStatus status) => switch (status) {

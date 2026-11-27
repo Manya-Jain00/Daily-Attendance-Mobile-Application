@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -7,7 +8,10 @@ import '../../core/models/company.dart';
 import '../../core/phone_number.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/person_avatar.dart';
 import '../auth/form_validators.dart';
+import '../../shared/widgets/role_names_scope.dart';
+import '../../core/models/role_names.dart';
 
 /// Director: add a supervisor (name, mobile number, teams), or edit one (name,
 /// teams, active). The number is their login, so it can't be changed here.
@@ -52,6 +56,7 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
   /// has that this list doesn't know about, so saving never drops them.
   late final Set<String> _teamIds = {...?widget.supervisor?.teamIds};
   late bool _active = widget.supervisor?.active ?? true;
+  late Uint8List? _photo = widget.supervisor?.photo;
 
   bool _busy = false;
   String? _error;
@@ -61,8 +66,10 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
   bool get _isAccountant => widget.role == UserRole.accountant;
 
   /// "supervisor" or "accountant", for the screen's wording.
-  String get _roleName => _isAccountant ? 'accountant' : 'supervisor';
-  String get _roleTitle => _isAccountant ? 'Accountant' : 'Supervisor';
+  RoleName get _role =>
+      _isAccountant ? namesOf(context).accountant : namesOf(context).supervisor;
+  String get _roleName => _role.word;
+  String get _roleTitle => _role.title;
 
   @override
   void dispose() {
@@ -78,8 +85,8 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
     final taken = widget.people.where((m) => m.phone == phone).firstOrNull;
     if (taken == null) return null;
     return taken.role == UserRole.accountant
-        ? 'An accountant with this number is already added'
-        : 'A supervisor with this number is already added';
+        ? '${_cap(namesOf(context).accountant.aWord)} with this number is already added'
+        : '${_cap(namesOf(context).supervisor.aWord)} with this number is already added';
   }
 
   List<String> get _orderedTeamIds => [
@@ -93,13 +100,15 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
     FocusScope.of(context).unfocus();
     final supervisor = widget.supervisor;
 
+    final photoChanged = !listEquals(_photo, supervisor?.photo);
+    final detailsChanged =
+        supervisor == null ||
+        _nameController.text.trim() != supervisor.name ||
+        _active != supervisor.active ||
+        _teamIds.length != supervisor.teamIds.length ||
+        !_teamIds.containsAll(supervisor.teamIds);
     if (supervisor != null) {
-      final unchanged =
-          _nameController.text.trim() == supervisor.name &&
-          _active == supervisor.active &&
-          _teamIds.length == supervisor.teamIds.length &&
-          _teamIds.containsAll(supervisor.teamIds);
-      if (unchanged) {
+      if (!detailsChanged && !photoChanged) {
         Navigator.pop(context);
         return;
       }
@@ -125,9 +134,14 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
             teamIds: _orderedTeamIds,
           );
         }
+        if (_photo case final photo?) {
+          await widget.repository.setPersonPhoto(phone, photo);
+        }
         if (!mounted) return;
         setState(() => _busy = false);
         await _showLoginDetails();
+      } else if (!detailsChanged) {
+        // Only the photo changed.
       } else if (_isAccountant) {
         await widget.repository.updateAccountant(
           supervisor.phone,
@@ -141,6 +155,9 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
           teamIds: _orderedTeamIds,
           active: _active,
         );
+      }
+      if (supervisor != null && photoChanged) {
+        await widget.repository.setPersonPhoto(supervisor.phone, _photo);
       }
       if (mounted) Navigator.pop(context);
     } on DataFailure catch (e) {
@@ -230,6 +247,13 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
+            PhotoField(
+              name: _nameController.text,
+              photo: _photo,
+              onChanged: _busy ? null : (p) => setState(() => _photo = p),
+              hint: 'Shown on their profile. They can also add it themselves.',
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _nameController,
               enabled: !_busy,
@@ -272,7 +296,8 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
             if (_isAccountant) ...[
               const SizedBox(height: 16),
               Text(
-                'An accountant sees every team, the dashboard, employee '
+                '${_cap(namesOf(context).accountant.aWord)} sees every team, the dashboard, '
+                '${namesOf(context).employee.word} '
                 "history and the reports (with the Excel file), but can't "
                 'change anything.',
                 style: theme.textTheme.bodyMedium?.copyWith(
@@ -287,7 +312,7 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
                 widget.teams.isEmpty
                     ? 'No teams yet. Add them in the Teams tab, then come back '
                           'to assign them.'
-                    : 'The teams this supervisor marks attendance for.',
+                    : 'The teams this ${namesOf(context).supervisor.word} marks attendance for.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -346,3 +371,6 @@ class _SupervisorFormPageState extends State<SupervisorFormPage> {
     );
   }
 }
+
+/// "a supervisor" -> "A supervisor".
+String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);

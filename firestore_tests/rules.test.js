@@ -9,7 +9,9 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  Bytes,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -477,6 +479,55 @@ describe('companies and their data', () => {
     await assertFails(updateDoc(ref, { settings: 'none' }));
   });
 
+  test("settings may hold the company's own role names", async () => {
+    const ref = doc(as(P.ceo1), 'companies', 'c1');
+    const save = (roleNames) =>
+      updateDoc(ref, { name: 'Acme', settings: { ...settings, roleNames } });
+    await assertSucceeds(save({ supervisor: 'Foreman', employee: 'Worker' }));
+    await assertSucceeds(
+      save({ director: 'Owner', supervisor: 'Mistri', accountant: 'Munim', employee: 'Karigar' }),
+    );
+    await assertSucceeds(save({}));
+    await assertFails(save({ supervisor: '' }));
+    await assertFails(save({ supervisor: '   ' }));
+    await assertFails(save({ supervisor: 'x'.repeat(31) }));
+    await assertFails(save({ supervisor: 5 }));
+    await assertFails(save({ manager: 'Boss' }));
+    await assertFails(save('Foreman'));
+    // Only the director renames.
+    await assertFails(
+      updateDoc(doc(as(P.sup1), 'companies', 'c1'), {
+        name: 'Acme',
+        settings: { ...settings, roleNames: { director: 'Boss' } },
+      }),
+    );
+  });
+
+  test('settings may hold the office location and flag distance', async () => {
+    const ref = doc(as(P.ceo1), 'companies', 'c1');
+    const save = (extra) =>
+      updateDoc(ref, { name: 'Acme', settings: { ...settings, ...extra } });
+    const office = { lat: 28.6139, lng: 77.209 };
+    await assertSucceeds(save({ office, officeRadiusM: 200 }));
+    // Without an office (not set yet, or removed).
+    await assertSucceeds(save({ officeRadiusM: 2000 }));
+    await assertFails(save({ office, officeRadiusM: 50 }));
+    await assertFails(save({ office, officeRadiusM: 2100 }));
+    await assertFails(save({ office, officeRadiusM: 200.5 }));
+    await assertFails(save({ office: { lat: 91, lng: 77 } }));
+    await assertFails(save({ office: { lat: 28, lng: -181 } }));
+    await assertFails(save({ office: { lat: '28', lng: 77 } }));
+    await assertFails(save({ office: { lat: 28 } }));
+    await assertFails(save({ office: { lat: 28, lng: 77, note: 'x' } }));
+    // A supervisor can't move the office.
+    await assertFails(
+      updateDoc(doc(as(P.sup1), 'companies', 'c1'), {
+        name: 'Acme',
+        settings: { ...settings, office },
+      }),
+    );
+  });
+
   test("supervisors can't change the company; nobody can change its creator", async () => {
     await assertFails(
       updateDoc(doc(as(P.sup1), 'companies', 'c1'), { name: 'Mine now' }),
@@ -828,6 +879,22 @@ describe('daily attendance (Phase 5)', () => {
 
   test("a supervisor saves their own team's sheet for today", async () => {
     await assertSucceeds(save(P.sup1, 't1', dayKey()));
+    // Each entry can carry when, by whom and where it was marked.
+    await assertSucceeds(
+      save(P.sup1, 't1', dayKey(), {
+        entries: {
+          E1: {
+            status: 'present',
+            inTime: '09:30',
+            late: false,
+            markedBy: P.sup1,
+            markedByName: 'Sunita',
+            markedAt: serverTimestamp(),
+            location: { lat: 28.6139, lng: 77.209, accuracy: 12 },
+          },
+        },
+      }),
+    );
     // Saving again replaces it.
     await assertSucceeds(save(P.sup1, 't1', dayKey(), { entries: {} }));
     // Not another supervisor's team.
@@ -1085,5 +1152,72 @@ describe('sample firm, end to end', () => {
     await assertFails(
       setDoc(at(rival, 'teams', 'x'), { name: 'Mine', createdAt: serverTimestamp() }),
     );
+  });
+});
+
+describe('photos (Phase 9)', () => {
+  const photo = (size = 20 * 1024) => Bytes.fromUint8Array(new Uint8Array(size));
+  const empRef = (db) => doc(db, 'companies', 'c1', 'employees', 'E1');
+  const userRef = (db, phone) => doc(db, 'users', phone);
+
+  beforeEach(async () => {
+    await seedCompany();
+    await seed(async (db) => {
+      await setDoc(doc(db, 'companies', 'c1', 'employees', 'E1'), {
+        empId: 'E1',
+        name: 'Asha',
+        designation: '',
+        active: true,
+      });
+    });
+  });
+
+  test('the director adds, changes and removes an employee photo', async () => {
+    const db = as(P.ceo1);
+    await assertSucceeds(updateDoc(empRef(db), { photo: photo() }));
+    await assertSucceeds(updateDoc(empRef(db), { photo: deleteField() }));
+    // A new employee may come with one.
+    await assertSucceeds(
+      setDoc(doc(db, 'companies', 'c1', 'employees', 'E2'), {
+        empId: 'E2',
+        name: 'Bala',
+        designation: '',
+        active: true,
+        createdAt: serverTimestamp(),
+        photo: photo(),
+      }),
+    );
+  });
+
+  test('employee photos must be small images, set by the director only', async () => {
+    await assertFails(updateDoc(empRef(as(P.ceo1)), { photo: photo(101 * 1024) }));
+    await assertFails(updateDoc(empRef(as(P.ceo1)), { photo: 'data:image/jpeg' }));
+    await assertFails(updateDoc(empRef(as(P.sup1)), { photo: photo() }));
+    await assertFails(updateDoc(empRef(as(P.ceo2)), { photo: photo() }));
+  });
+
+  test('a supervisor changes their own photo, and nothing else', async () => {
+    const db = as(P.sup1);
+    await assertSucceeds(updateDoc(userRef(db, P.sup1), { photo: photo() }));
+    await assertSucceeds(updateDoc(userRef(db, P.sup1), { photo: deleteField() }));
+    await assertFails(
+      updateDoc(userRef(db, P.sup1), { photo: photo(), name: 'Boss' }),
+    );
+    await assertFails(updateDoc(userRef(db, P.sup1), { teamIds: ['t1'] }));
+    await assertFails(updateDoc(userRef(db, P.sup1), { photo: photo(101 * 1024) }));
+    // Not someone else's.
+    await assertFails(updateDoc(userRef(db, P.ceo1), { photo: photo() }));
+    // Not once deactivated.
+    await assertFails(
+      updateDoc(userRef(as(P.gone1), P.gone1), { photo: photo() }),
+    );
+  });
+
+  test('the director sets their own and their staff photos', async () => {
+    const db = as(P.ceo1);
+    await assertSucceeds(updateDoc(userRef(db, P.ceo1), { photo: photo() }));
+    await assertSucceeds(updateDoc(userRef(db, P.sup1), { photo: photo() }));
+    // Not another firm's staff.
+    await assertFails(updateDoc(userRef(db, P.sup2), { photo: photo() }));
   });
 });

@@ -10,6 +10,10 @@ import '../../shared/widgets/month_selector.dart';
 import '../../shared/widgets/team_selector.dart';
 import 'employee_form_page.dart';
 import 'pick_employee_page.dart';
+import '../../shared/widgets/person_avatar.dart';
+import '../../shared/widgets/role_names_scope.dart';
+
+export '../../shared/widgets/person_avatar.dart' show initialOf;
 
 /// Who works in each team, month by month. Each month starts as a copy of
 /// the month before, so only the people who changed are added or removed.
@@ -71,7 +75,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                 children: [
                   ListTile(
                     leading: const Icon(Icons.person_add_alt_1_outlined),
-                    title: const Text('New employee'),
+                    title: Text('New ${namesOf(context).employee.word}'),
                     subtitle: const Text('Someone not in the app yet'),
                     onTap: () => Navigator.pop(context, _AddChoice.newEmployee),
                   ),
@@ -145,9 +149,10 @@ class _EmployeesPageState extends State<EmployeesPage> {
                 title: 'No teams yet',
                 message: _isDirector
                     ? 'Add a team in the Teams tab first, then add its '
-                          'employees here.'
-                    : 'You have not been given a team yet. Ask your director '
-                          'to assign you one, then add its employees here.',
+                          '${namesOf(context).employee.words} here.'
+                    : 'You have not been given a team yet. Ask your '
+                          '${namesOf(context).director.word} to assign you one, then add its '
+                          '${namesOf(context).employee.words} here.',
               );
             }
             final teamId = _selectedFrom(myTeams);
@@ -168,7 +173,11 @@ class _EmployeesPageState extends State<EmployeesPage> {
                       heroTag: null,
                       onPressed: () => _add(view),
                       icon: const Icon(Icons.person_add_alt_1_outlined),
-                      label: Text(_isDirector ? 'Add employee' : 'Add to team'),
+                      label: Text(
+                        _isDirector
+                            ? 'Add ${namesOf(context).employee.word}'
+                            : 'Add to team',
+                      ),
                     )
                   : null,
               body: Column(
@@ -207,7 +216,8 @@ class _EmployeesPageState extends State<EmployeesPage> {
           icon: Icons.lock_outline,
           text: _isDirector
               ? 'A past month: view only.'
-              : 'A past month: view only. Ask your director to correct it.',
+              : 'A past month: view only. Ask your ${namesOf(context).director.word} to correct '
+                    'it.',
         )
       else if (list.copiedFrom != null && list.empIds.isNotEmpty)
         _Note(
@@ -240,7 +250,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                   : _editable
                   ? 'Add the people who work in ${list.team.name} in '
                         '${_month.name}. Someone new to the company is added '
-                        'by your director.'
+                        'by your ${namesOf(context).director.word}.'
                   : 'Nobody worked in ${list.team.name} in ${_month.label}.',
             ),
           ),
@@ -260,7 +270,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
       ...notes,
       Text(
         [
-          activeCount == 1 ? '1 employee' : '$activeCount employees',
+          activeCount == 1
+              ? '1 ${namesOf(context).employee.word}'
+              : '$activeCount ${namesOf(context).employee.words}',
           if (inactiveCount > 0) '$inactiveCount inactive',
         ].join(' · '),
         style: theme.textTheme.bodyMedium?.copyWith(color: muted),
@@ -280,14 +292,11 @@ class _EmployeesPageState extends State<EmployeesPage> {
         return Card(
           child: ListTile(
             onTap: () => _edit(view, employee),
-            leading: CircleAvatar(
-              backgroundColor: employee.active
-                  ? theme.colorScheme.primaryContainer
-                  : theme.colorScheme.surfaceContainerHighest,
-              foregroundColor: employee.active
-                  ? theme.colorScheme.onPrimaryContainer
-                  : muted,
-              child: Text(initialOf(employee.name)),
+            leading: PersonAvatar(
+              name: employee.name,
+              photo: employee.photo,
+              dimmed: !employee.active,
+              enlargeOnTap: false,
             ),
             title: Text(
               employee.name,
@@ -418,9 +427,4 @@ class _Note extends StatelessWidget {
       ),
     );
   }
-}
-
-String initialOf(String name) {
-  final trimmed = name.trim();
-  return trimmed.isEmpty ? '?' : trimmed.characters.first.toUpperCase();
 }

@@ -1,3 +1,6 @@
+import 'geo.dart';
+import 'role_names.dart';
+
 /// A firm, as stored in `companies/{companyId}`.
 class Company {
   const Company({required this.name, required this.settings});
@@ -21,6 +24,9 @@ class CompanySettings {
     required this.lateAfter,
     required this.halfDayBelowHours,
     required this.supervisorEditDays,
+    this.office,
+    this.officeRadiusM = defaultOfficeRadiusM,
+    this.roleNames = RoleNames.defaults,
   });
 
   /// What every new company starts with.
@@ -35,6 +41,12 @@ class CompanySettings {
   /// Limits of the +/- buttons in Settings.
   static const maxHalfDayHours = 12;
   static const maxSupervisorEditDays = 31;
+
+  /// Entries saved further than this from the office are flagged. GPS inside
+  /// buildings can be off by 20-100 m, so it isn't tighter.
+  static const defaultOfficeRadiusM = 200;
+  static const minOfficeRadiusM = 100;
+  static const maxOfficeRadiusM = 2000;
 
   static final _timePattern = RegExp(r'^([01][0-9]|2[0-3]):[0-5][0-9]$');
 
@@ -53,6 +65,23 @@ class CompanySettings {
   /// director-only.
   final int supervisorEditDays;
 
+  /// Where the office is, set by the director. Null until set: then entries
+  /// show a map link but no distance.
+  final GeoPoint? office;
+
+  /// How far from [office] an entry can be saved before it's flagged.
+  final int officeRadiusM;
+
+  /// What this company calls its roles on screen and in the Excel file.
+  final RoleNames roleNames;
+
+  /// Whether [location] is too far from the office (false while no office
+  /// is set).
+  bool isFarFromOffice(GeoPoint location) {
+    final office = this.office;
+    return office != null && office.distanceTo(location) > officeRadiusM;
+  }
+
   /// Reads stored settings, falling back to the default for any field that's
   /// missing or malformed, so a bad record can't crash the app.
   factory CompanySettings.fromMap(Object? raw) {
@@ -64,6 +93,7 @@ class CompanySettings {
 
     final halfDay = map['halfDayBelowHours'];
     final editDays = map['supervisorEditDays'];
+    final radius = map['officeRadiusM'];
     return CompanySettings(
       officeStart: time('officeStart', defaults.officeStart),
       officeEnd: time('officeEnd', defaults.officeEnd),
@@ -72,6 +102,14 @@ class CompanySettings {
       supervisorEditDays: editDays is int
           ? editDays
           : defaults.supervisorEditDays,
+      office: GeoPoint.fromMap(map['office']),
+      officeRadiusM:
+          radius is int &&
+              radius >= minOfficeRadiusM &&
+              radius <= maxOfficeRadiusM
+          ? radius
+          : defaultOfficeRadiusM,
+      roleNames: RoleNames.fromMap(map['roleNames']),
     );
   }
 
@@ -81,6 +119,9 @@ class CompanySettings {
     'lateAfter': lateAfter,
     'halfDayBelowHours': halfDayBelowHours,
     'supervisorEditDays': supervisorEditDays,
+    if (office case final o?) 'office': o.toMap(),
+    'officeRadiusM': officeRadiusM,
+    if (!roleNames.allDefault) 'roleNames': roleNames.toMap(),
   };
 
   CompanySettings copyWith({
@@ -89,12 +130,29 @@ class CompanySettings {
     String? lateAfter,
     num? halfDayBelowHours,
     int? supervisorEditDays,
+    int? officeRadiusM,
+    RoleNames? roleNames,
   }) => CompanySettings(
     officeStart: officeStart ?? this.officeStart,
     officeEnd: officeEnd ?? this.officeEnd,
     lateAfter: lateAfter ?? this.lateAfter,
     halfDayBelowHours: halfDayBelowHours ?? this.halfDayBelowHours,
     supervisorEditDays: supervisorEditDays ?? this.supervisorEditDays,
+    office: office,
+    officeRadiusM: officeRadiusM ?? this.officeRadiusM,
+    roleNames: roleNames ?? this.roleNames,
+  );
+
+  /// The same settings with the office at [office] (null clears it).
+  CompanySettings withOffice(GeoPoint? office) => CompanySettings(
+    officeStart: officeStart,
+    officeEnd: officeEnd,
+    lateAfter: lateAfter,
+    halfDayBelowHours: halfDayBelowHours,
+    supervisorEditDays: supervisorEditDays,
+    office: office,
+    officeRadiusM: officeRadiusM,
+    roleNames: roleNames,
   );
 
   @override
@@ -104,7 +162,10 @@ class CompanySettings {
       other.officeEnd == officeEnd &&
       other.lateAfter == lateAfter &&
       other.halfDayBelowHours == halfDayBelowHours &&
-      other.supervisorEditDays == supervisorEditDays;
+      other.supervisorEditDays == supervisorEditDays &&
+      other.office == office &&
+      other.officeRadiusM == officeRadiusM &&
+      other.roleNames == roleNames;
 
   @override
   int get hashCode => Object.hash(
@@ -113,6 +174,9 @@ class CompanySettings {
     lateAfter,
     halfDayBelowHours,
     supervisorEditDays,
+    office,
+    officeRadiusM,
+    roleNames,
   );
 }
 

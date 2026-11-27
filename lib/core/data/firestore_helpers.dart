@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -37,3 +38,21 @@ String firestoreMessage(Object error) {
     _ => 'Something went wrong ($code). Please try again.',
   };
 }
+
+/// [data] with Firestore's own types turned into plain Dart ones, at any
+/// depth: [Timestamp] to [DateTime] and [Blob] to [Uint8List]. Keeps the
+/// models free of Firestore.
+Map<String, dynamic> plainData(Map<String, dynamic> data) =>
+    data.map((k, v) => MapEntry(k, _plain(v)));
+
+Object? _plain(Object? value) => switch (value) {
+  Timestamp t => t.toDate(),
+  Blob b => b.bytes,
+  Map m => {for (final e in m.entries) e.key: _plain(e.value)},
+  List l => [for (final v in l) _plain(v)],
+  _ => value,
+};
+
+/// A photo as stored: Firestore bytes, or a delete when there's none.
+Object photoValue(Uint8List? photo) =>
+    photo == null ? FieldValue.delete() : Blob(photo);

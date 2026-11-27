@@ -8,6 +8,7 @@ import '../auth/auth_service.dart';
 import 'attendance_page.dart';
 import 'employees_page.dart';
 import 'past_days_page.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 class SupervisorHomeScreen extends StatefulWidget {
   const SupervisorHomeScreen({super.key});
@@ -54,7 +55,7 @@ class _SupervisorHomeScreenState extends State<SupervisorHomeScreen> {
           ),
         ),
         ShellTab(
-          label: 'Employees',
+          label: namesOf(context).employee.titles,
           icon: Icons.people_outline,
           selectedIcon: Icons.people,
           // Keyed by the repository so a new team list starts fresh.

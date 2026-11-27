@@ -95,7 +95,8 @@ service cloud.firestore {
     function validSettings(settings) {
       return settings is map
         && settings.keys().hasOnly(['officeStart', 'officeEnd', 'lateAfter',
-             'halfDayBelowHours', 'supervisorEditDays'])
+             'halfDayBelowHours', 'supervisorEditDays', 'office',
+             'officeRadiusM', 'roleNames'])
         && settings.keys().hasAll(['officeStart', 'officeEnd', 'lateAfter',
              'halfDayBelowHours', 'supervisorEditDays'])
         && validTime(settings.officeStart)
@@ -106,13 +107,54 @@ service cloud.firestore {
         && settings.halfDayBelowHours <= 12
         && settings.supervisorEditDays is int
         && settings.supervisorEditDays >= 0
-        && settings.supervisorEditDays <= 31;
+        && settings.supervisorEditDays <= 31
+        // Where the office is (optional), and how far from it an entry may
+        // be saved before the director sees it flagged.
+        && (!('office' in settings) || validPoint(settings.office))
+        && (!('officeRadiusM' in settings)
+            || (settings.officeRadiusM is int
+                && settings.officeRadiusM >= 100
+                && settings.officeRadiusM <= 2000))
+        // The company's own names for its roles (only the renamed ones).
+        && (!('roleNames' in settings) || validRoleNames(settings.roleNames));
+    }
+
+    function validRoleName(names, key) {
+      return !(key in names)
+        || (names[key] is string
+            && names[key].trim().size() >= 1
+            && names[key].size() <= 30);
+    }
+
+    function validRoleNames(names) {
+      return names is map
+        && names.keys().hasOnly(
+             ['director', 'supervisor', 'accountant', 'employee'])
+        && validRoleName(names, 'director')
+        && validRoleName(names, 'supervisor')
+        && validRoleName(names, 'accountant')
+        && validRoleName(names, 'employee');
+    }
+
+    function validPoint(point) {
+      return point is map
+        && point.keys().hasOnly(['lat', 'lng'])
+        && point.keys().hasAll(['lat', 'lng'])
+        && point.lat is number && point.lat >= -90 && point.lat <= 90
+        && point.lng is number && point.lng >= -180 && point.lng <= 180;
+    }
+
+    // A small JPEG of a face (the app shrinks it to about 240 px).
+    function validPhoto(data) {
+      return !('photo' in data)
+        || (data.photo is bytes && data.photo.size() <= 100 * 1024);
     }
 
     function validUserFields(data) {
       return data.keys().hasOnly(
                ['companyId', 'role', 'name', 'phone', 'teamIds', 'active',
-                'createdAt'])
+                'createdAt', 'photo'])
+        && validPhoto(data)
         && data.companyId is string
         && data.role in ['director', 'supervisor', 'accountant']
         && validName(data.name)
@@ -169,9 +211,18 @@ service cloud.firestore {
         && isDirectorOf(resource.data.companyId)
         && validUserFields(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['name', 'teamIds', 'active'])
+             .hasOnly(['name', 'teamIds', 'active', 'photo'])
         && (resource.data.role == 'supervisor'
             || request.resource.data.teamIds.size() == 0);
+
+      // Anyone still active changes their own photo (My profile), and
+      // nothing else.
+      allow update: if hasPhone()
+        && myPhone() == phone
+        && resource.data.active == true
+        && validUserFields(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['photo']);
 
       // Never deleted: supervisors and accountants are deactivated instead, so their past
       // attendance entries keep a valid author.
@@ -229,7 +280,9 @@ service cloud.firestore {
       match /employees/{empId} {
         function validEmployee(data) {
           return data.keys().hasOnly(
-                   ['empId', 'name', 'designation', 'active', 'createdAt'])
+                   ['empId', 'name', 'designation', 'active', 'createdAt',
+                    'photo'])
+            && validPhoto(data)
             && data.empId == empId
             && validName(data.name)
             && data.designation is string
@@ -248,7 +301,7 @@ service cloud.firestore {
         allow update: if isDirectorOf(companyId)
           && validEmployee(request.resource.data)
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['name', 'designation', 'active']);
+               .hasOnly(['name', 'designation', 'active', 'photo']);
 
         // Never deleted: people who leave are deactivated, so their past
         // attendance keeps a name.

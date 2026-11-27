@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:daily_attendance/core/data/company_repository.dart';
 import 'package:daily_attendance/core/models/app_user.dart';
@@ -166,5 +167,15 @@ class FakeCompanyRepository implements CompanyRepository {
     name: name ?? m.name,
     teamIds: teamIds ?? m.teamIds,
     active: active ?? m.active,
+    photo: m.photo,
   );
+
+  @override
+  Future<void> setPersonPhoto(String phone, Uint8List? photo) async {
+    for (final list in [supervisors, accountants]) {
+      final i = list.indexWhere((m) => m.phone == phone);
+      if (i >= 0) list[i] = list[i].withPhoto(photo);
+    }
+    _changed();
+  }
 }

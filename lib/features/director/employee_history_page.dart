@@ -10,7 +10,8 @@ import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
 import '../supervisor/attendance_page.dart' show statusColor;
-import '../supervisor/employees_page.dart' show initialOf;
+import '../../shared/widgets/person_avatar.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Director: one employee's attendance over any dates, across every team they
 /// worked in. First pick the person, then the dates.
@@ -99,7 +100,9 @@ class _EmployeeHistoryPageState extends State<EmployeeHistoryPage> {
         if (!didPop) setState(() => _empId = null);
       },
       child: Scaffold(
-        appBar: const BrandAppBar(title: 'Employee history'),
+        appBar: BrandAppBar(
+          title: '${namesOf(context).employee.title} history',
+        ),
         body: StreamBuilder<List<Team>>(
           stream: _teams,
           builder: (context, teamsSnap) => StreamBuilder<List<Employee>>(
@@ -138,7 +141,6 @@ class _EmployeeHistoryPageState extends State<EmployeeHistoryPage> {
           if (a.active != b.active) return a.active ? -1 : 1;
           return Employee.compareByEmpId(a, b);
         });
-    final theme = Theme.of(context);
     return Column(
       children: [
         Padding(
@@ -156,9 +158,11 @@ class _EmployeeHistoryPageState extends State<EmployeeHistoryPage> {
           child: matches.isEmpty
               ? EmptyState(
                   icon: Icons.person_search_outlined,
-                  title: employees.isEmpty ? 'No employees yet' : 'No match',
+                  title: employees.isEmpty
+                      ? 'No ${namesOf(context).employee.words} yet'
+                      : 'No match',
                   message: employees.isEmpty
-                      ? 'Supervisors add employees on their Employees tab.'
+                      ? 'The ${namesOf(context).director.word} adds ${namesOf(context).employee.words} on the ${namesOf(context).employee.titles} tab.'
                       : 'Check the spelling of the name or Emp ID.',
                 )
               : ListView.separated(
@@ -170,10 +174,10 @@ class _EmployeeHistoryPageState extends State<EmployeeHistoryPage> {
                     return Card(
                       child: ListTile(
                         onTap: () => setState(() => _empId = e.empId),
-                        leading: CircleAvatar(
-                          backgroundColor: theme.colorScheme.primaryContainer,
-                          foregroundColor: theme.colorScheme.onPrimaryContainer,
-                          child: Text(initialOf(e.name)),
+                        leading: PersonAvatar(
+                          name: e.name,
+                          photo: e.photo,
+                          enlargeOnTap: false,
                         ),
                         title: Text(e.name),
                         subtitle: Text(
@@ -208,11 +212,7 @@ class _EmployeeHistoryPageState extends State<EmployeeHistoryPage> {
     final header = <Widget>[
       Card(
         child: ListTile(
-          leading: CircleAvatar(
-            backgroundColor: theme.colorScheme.primaryContainer,
-            foregroundColor: theme.colorScheme.onPrimaryContainer,
-            child: Text(initialOf(employee.name)),
-          ),
+          leading: PersonAvatar(name: employee.name, photo: employee.photo),
           title: Text(employee.name),
           subtitle: Text(
             [

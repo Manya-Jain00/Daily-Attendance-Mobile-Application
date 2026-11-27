@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../models/app_user.dart';
+import '../location/location_service.dart';
 import '../models/attendance.dart';
 import '../models/company.dart';
 import '../models/day.dart';
 import '../models/employee.dart';
+import '../models/geo.dart';
 import '../models/month.dart';
 import '../models/roster.dart';
 
@@ -61,6 +65,9 @@ abstract class EmployeeRepository {
     required bool active,
   });
 
+  /// Sets or (with null) removes an employee's photo. Director only.
+  Future<void> setEmployeePhoto(String empId, Uint8List? photo);
+
   /// Saves [teamId]'s list for [month].
   Future<void> saveRoster(String teamId, Month month, List<String> empIds);
 
@@ -72,11 +79,18 @@ abstract class EmployeeRepository {
   Stream<List<AttendanceSheet>> watchAttendance(Day from, Day to);
 
   /// Saves [teamId]'s sheet for [date], replacing what was there.
+  ///
+  /// Entries without a stamp (new or changed) are stamped with the server
+  /// time, who saved them and [location]. Entries with one keep it.
   Future<void> saveAttendance(
     String teamId,
     Day date,
-    Map<String, AttendanceEntry> entries,
-  );
+    Map<String, AttendanceEntry> entries, {
+    EntryLocation? location,
+  });
+
+  /// The phone's position, needed when a supervisor saves attendance.
+  LocationService get location;
 }
 
 /// Opens the [EmployeeRepository] for a signed-in supervisor.

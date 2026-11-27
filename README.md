@@ -165,7 +165,7 @@ Each phase is finished and tested on a real phone before moving to the next.
 - [x] Run `flutter doctor` and fix any issues
 - [x] Create a **Firebase project** (console.firebase.google.com)
   - Project ID: `daily-attendance-b1b1e` · Spark (free) plan
-  - Authentication: Phone enabled (was Email/Password before the Phase 9 phone-login change)
+  - Authentication: Phone enabled on 2026-11-27 (Phase 9; Email/Password was used before)
   - Firestore: `(default)` database, Standard edition, `asia-south2 (Delhi)`, production mode
 - [ ] On the Android phone: turn on **Developer options** and **USB debugging** (deferred: testing on the emulator `Medium_Phone_API_37.0` until before Phase 5)
 
@@ -264,7 +264,10 @@ Requested by the director after seeing the app. Every change made after Phase 8 
 - [x] A new number is offered "Set up a new company"; a supervisor the director hasn't added yet is told to ask for it
 - [x] Supervisors are added by mobile number
 - [x] Security rules and tests updated (profiles keyed by phone number; 53 tests in [firestore_tests/](firestore_tests/))
-- [ ] Firebase console: turn on Phone sign-in, add SHA-1/SHA-256 (debug + release), add test numbers
+- [x] SHA-1/SHA-256 fingerprints added to the Firebase Android app, debug and release (2026-11-27, with the Firebase CLI; `google-services.json` unchanged)
+- [x] Firebase console: Phone sign-in turned on (2026-11-27), with test numbers for trying out the app (kept in the console only, not in this public repo). Test numbers send no SMS
+- [ ] Before the firm uses the app for real: delete the test numbers (Authentication → Sign-in method → Phone) and the test company, and turn off Email/Password
+- Note: on the free (Spark) plan Firebase sends at most **10 real SMS codes a day**. People stay logged in, so a code is only needed on a new phone, after a reinstall or after logging out. For more, add a billing account (Blaze plan); extra SMS are charged per message
 - [x] Delete the old test data (`users`/`companies`/`companyCodes`, all of Firestore, 2026-11-27) and publish the new rules
 - [ ] Delete the old email logins (Firebase console → Authentication → Users). Optional: they can't get into the phone-only app
 - [ ] Check on the emulator / phone: set up a company with a test number, add a supervisor by number, log in as them
@@ -283,6 +286,29 @@ Requested by the director after seeing the app. Every change made after Phase 8 
 - [x] The director's **Supervisors tab renamed "People"**: it lists supervisors and accountants in their own sections, with one "Add" button (Supervisor or Accountant)
 - [x] Publish the updated security rules (accountant role), 2026-11-27
 - [ ] Check on the phone: the director adds an accountant; log in as them and check Dashboard, Teams and Reports are view only, and the Excel file shares
+
+#### Director's second set of requests (2026-11-27)
+- [x] **Entry time:** every person's entry saves when it was marked (Firebase server time, so a changed phone clock can't fake it), who marked it (number and name) and where. Each row shows "Marked 9:42 AM by Sunita". Only new or changed entries get a new stamp; the rest keep theirs
+- [x] **Photos** (package `image_picker`): the director adds, changes or removes a photo on the employee form (Take photo or Gallery). Photos are shrunk on the phone to 240 px (about 10–20 KB) and saved on the employee record in Firestore, so no paid Storage plan is needed. Employees still **don't log in**
+  - The photo shows next to the name on the Employees tab, the pickers, employee history and reports
+  - On the supervisor's marking screen the photo is larger, with a ring in the colour it's marked (helps a supervisor who can't read names). Tap a photo to see it full size
+  - Supervisors see an employee's photo but can't change it
+- [x] **My profile** (button at the top right on every home screen, showing your photo once added): full name, the mobile number registered with the app, role, and photo. Everyone (director, supervisor, accountant) can take or remove their own photo there. The director can also set a supervisor's or accountant's photo on the People form
+  - Rules: `photo` (bytes, at most 100 KB) on employees (director only) and on profiles (the director for their staff; each person for their own photo, nothing else, while active). 61 rules tests pass, 99 app tests pass
+- [ ] Check on the phone: add an employee photo with the camera, see it on the supervisor's sheet; add your own photo on My profile
+- [x] **Location of each entry:** when a supervisor saves attendance, the phone's GPS position is read once and saved on each new or changed entry. Never tracked in the background; the app explains this before Android's "Allow location?" prompt
+  - If location is off or refused, **saving is blocked** (the marks are kept) until the supervisor turns it on. The director's own corrections don't need a location
+  - The director and accountant see on each row the distance from the office and a **Map** link (opens Google Maps, no API key). Entries further than the limit, or that Android reports as coming from a location-faking app, are shown in red
+  - Settings → **Office location**: "Use where I am now" (stand in the office), Remove, and "Flag entries further than" (default 200 m, 100 m–2 km; GPS indoors can be off by 20–100 m)
+  - Packages `geolocator` and `url_launcher`; Android location permission added
+  - Rules: settings may hold `office` {lat, lng} and `officeRadiusM` (100–2000). 57 rules tests pass, 93 app tests pass
+- [ ] Check on the phone: set the office location, save as a supervisor, see the time, distance and map link as the director; try with location off
+- [x] **Custom role names:** Settings → **Names in the app**: the director types the company's own word for Director, Supervisor, Accountant and Employee (e.g. Owner, Foreman, Munim, Worker; up to 30 characters). Blank keeps the usual name, so every company starts with the defaults
+  - Every screen follows them live (tab names, headings, buttons, messages, My profile) and so does the Excel file ("All workers" tab). Default words stay lower case mid-sentence ("ask your director"); a firm's own word is kept as typed ("ask your Seth-ji"). Plurals are made by simple English rules (Foreman → Foremen, Mistry → Mistries)
+  - Only the names on screen change: the saved roles (`director`, `supervisor`, `accountant`) and the rules stay the same. The login and company set-up screens use the defaults (no company is known yet)
+  - Stored as `settings.roleNames` (only the renamed ones). 62 rules tests pass, 106 app tests pass
+- [ ] Check on the phone: rename Supervisor and Employee in Settings, then look at a supervisor's tabs and the Excel file
+- [x] Security rules published (2026-11-27): office location, photos and role names
 
 #### Later: daily pay in the app (planned, not started)
 The app now works out Dihadi; the daily rate is typed by the director in the Excel file. The plan to keep rates in the app:

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../models/attendance.dart';
 import '../models/attendance_report.dart';
+import '../models/role_names.dart';
 import 'xlsx.dart';
 
 /// The report as an Excel workbook, laid out like the firm's paper sheets:
@@ -17,8 +18,9 @@ import 'xlsx.dart';
 /// there, and every total is a formula.
 Uint8List attendanceWorkbook(
   AttendanceReport report,
-  Map<String, String> teamNames,
-) {
+  Map<String, String> teamNames, {
+  RoleNames names = RoleNames.defaults,
+}) {
   String teams(ReportRow row) =>
       row.teamIds.map((t) => teamNames[t] ?? 'A deleted team').join(', ');
 
@@ -29,7 +31,10 @@ Uint8List attendanceWorkbook(
           "'$_summaryName'!\$${columnName(_rateCol)}\$${_firstSummaryRow + i}",
   };
 
-  final all = XlsxSheet('All employees', columnWidths: _blockWidths);
+  final all = XlsxSheet(
+    'All ${names.employee.words}',
+    columnWidths: _blockWidths,
+  );
   for (final row in report.rows) {
     final total = _addBlock(
       all,

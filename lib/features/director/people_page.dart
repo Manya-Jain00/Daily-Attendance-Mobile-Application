@@ -6,6 +6,8 @@ import '../../core/models/company.dart';
 import '../../core/phone_number.dart';
 import '../../shared/widgets/load_state.dart';
 import 'supervisor_form_page.dart';
+import '../../shared/widgets/person_avatar.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Director's People tab: everyone who logs in besides the director. The
 /// company's supervisors, with their teams, and its accountants (view-only
@@ -54,13 +56,13 @@ class _PeoplePageState extends State<PeoplePage> {
           children: [
             ListTile(
               leading: const Icon(Icons.badge_outlined),
-              title: const Text('Supervisor'),
+              title: Text(namesOf(context).supervisor.title),
               subtitle: const Text('Marks attendance for their teams'),
               onTap: () => Navigator.pop(context, UserRole.supervisor),
             ),
             ListTile(
               leading: const Icon(Icons.visibility_outlined),
-              title: const Text('Accountant'),
+              title: Text(namesOf(context).accountant.title),
               subtitle: const Text(
                 'Sees the dashboard, teams and reports. View only',
               ),
@@ -129,10 +131,10 @@ class _PeoplePageState extends State<PeoplePage> {
         icon: Icons.badge_outlined,
         title: 'No one added yet',
         message: teams.isEmpty
-            ? 'Add your teams first (Teams tab), then add supervisors and '
-                  'accountants here by their mobile number. They log in with it.'
-            : 'Add supervisors and accountants by their mobile number. They '
-                  'log in with it.',
+            ? 'Add your teams first (Teams tab), then add ${namesOf(context).supervisor.words} and '
+                  '${namesOf(context).accountant.words} here by their mobile number. They log in with it.'
+            : 'Add ${namesOf(context).supervisor.words} and ${namesOf(context).accountant.words} by their mobile number. '
+                  'They log in with it.',
       );
     }
     final teamNames = {for (final t in teams) t.id: t.name};
@@ -153,12 +155,12 @@ class _PeoplePageState extends State<PeoplePage> {
       child: Text(text, style: theme.textTheme.titleMedium),
     );
     final items = <Widget>[
-      heading('Supervisors'),
+      heading(namesOf(context).supervisor.titles),
       if (supervisors.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
-            'No supervisors yet.',
+            'No ${namesOf(context).supervisor.words} yet.',
             style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
@@ -169,7 +171,7 @@ class _PeoplePageState extends State<PeoplePage> {
           onTap: () => _open(teams, people, person: supervisor),
         ),
       if (accountants.isNotEmpty) ...[
-        heading('Accountants'),
+        heading(namesOf(context).accountant.titles),
         for (final accountant in activeFirst(accountants))
           _PersonCard(
             person: accountant,
@@ -206,14 +208,11 @@ class _PersonCard extends StatelessWidget {
     return Card(
       child: ListTile(
         onTap: onTap,
-        leading: CircleAvatar(
-          backgroundColor: person.active
-              ? theme.colorScheme.primaryContainer
-              : theme.colorScheme.surfaceContainerHighest,
-          foregroundColor: person.active
-              ? theme.colorScheme.onPrimaryContainer
-              : muted,
-          child: Text(_initial(person.name)),
+        leading: PersonAvatar(
+          name: person.name,
+          photo: person.photo,
+          dimmed: !person.active,
+          enlargeOnTap: false,
         ),
         title: Text(
           person.name,
@@ -229,9 +228,4 @@ class _PersonCard extends StatelessWidget {
       ),
     );
   }
-}
-
-String _initial(String name) {
-  final trimmed = name.trim();
-  return trimmed.isEmpty ? '?' : trimmed.characters.first.toUpperCase();
 }

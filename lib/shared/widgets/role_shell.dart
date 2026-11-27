@@ -1,7 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../features/auth/auth_scope.dart';
+import '../../features/auth/auth_service.dart';
+import '../../features/profile/profile_page.dart';
 import 'brand_app_bar.dart';
+import 'person_avatar.dart';
 
 class ShellTab {
   const ShellTab({
@@ -34,10 +37,26 @@ class _RoleShellState extends State<RoleShell> {
   @override
   Widget build(BuildContext context) {
     final tabs = widget.tabs;
+    final session = AuthScope.of(context).session;
+    final me = session is SignedIn ? session.user : null;
     return Scaffold(
       appBar: BrandAppBar(
         title: tabs[_index].label,
         actions: [
+          IconButton(
+            tooltip: 'My profile',
+            icon: me?.photo == null
+                ? const Icon(Icons.account_circle_outlined)
+                : PersonAvatar(
+                    name: me!.name,
+                    photo: me.photo,
+                    radius: 14,
+                    enlargeOnTap: false,
+                  ),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ProfilePage()),
+            ),
+          ),
           IconButton(
             tooltip: 'Log out',
             icon: const Icon(Icons.logout),

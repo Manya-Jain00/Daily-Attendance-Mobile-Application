@@ -3,7 +3,8 @@ import 'package:material_ui/material_ui.dart';
 import '../../core/models/employee.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/load_state.dart';
-import 'employees_page.dart' show initialOf;
+import '../../shared/widgets/person_avatar.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Supervisor: pick someone from another team who works in this team for just
 /// one day. They go on that day's sheet only, not on the monthly list, and
@@ -57,7 +58,7 @@ class _PickGuestPageState extends State<PickGuestPage> {
             child: Text(
               'For one day only. They are marked present here and show as '
               'absent on their own team\'s sheet. To move someone for the '
-              'whole month, use the Employees tab.',
+              'whole month, use the ${namesOf(context).employee.titles} tab.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -82,7 +83,7 @@ class _PickGuestPageState extends State<PickGuestPage> {
                     message: query.isEmpty
                         ? 'Everyone in the company is already on this sheet.'
                         : 'Check the spelling. New people are added on the '
-                              'Employees tab.',
+                              '${namesOf(context).employee.titles} tab.',
                   )
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -93,11 +94,10 @@ class _PickGuestPageState extends State<PickGuestPage> {
                       return Card(
                         child: ListTile(
                           onTap: () => Navigator.pop(context, e),
-                          leading: CircleAvatar(
-                            backgroundColor: theme.colorScheme.primaryContainer,
-                            foregroundColor:
-                                theme.colorScheme.onPrimaryContainer,
-                            child: Text(initialOf(e.name)),
+                          leading: PersonAvatar(
+                            name: e.name,
+                            photo: e.photo,
+                            enlargeOnTap: false,
                           ),
                           title: Text(e.name),
                           subtitle: Text(

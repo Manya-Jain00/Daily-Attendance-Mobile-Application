@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../core/data/firestore_helpers.dart' show photoValue, plainData;
 import '../../core/models/app_user.dart';
 import '../../core/models/company.dart';
 import 'auth_service.dart';
@@ -69,7 +71,7 @@ class FirebaseAuthService extends AuthService {
               _setSession(NeedsCompany(phone));
               return;
             }
-            final profile = AppUser.fromMap(snapshot.id, data);
+            final profile = AppUser.fromMap(snapshot.id, plainData(data));
             if (profile == null) {
               _setSession(
                 const SessionProblem(
@@ -202,6 +204,23 @@ class FirebaseAuthService extends AuthService {
       );
     } finally {
       _creatingCompany = false;
+    }
+  }
+
+  @override
+  Future<void> setMyPhoto(Uint8List? photo) async {
+    final current = session;
+    if (current is! SignedIn) {
+      throw const AuthFailure('Log in first.');
+    }
+    try {
+      await _db.collection('users').doc(current.user.phone).update({
+        'photo': photoValue(photo),
+      });
+    } on FirebaseException catch (e) {
+      throw AuthFailure(
+        'The photo could not be saved. ${_firestoreMessage(e)}',
+      );
     }
   }
 

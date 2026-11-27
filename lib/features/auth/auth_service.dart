@@ -78,6 +78,9 @@ abstract class AuthService extends ChangeNotifier {
     required String companyName,
   });
 
+  /// Sets or (with null) removes the signed-in person's own photo.
+  Future<void> setMyPhoto(Uint8List? photo);
+
   Future<void> signOut();
 }
 

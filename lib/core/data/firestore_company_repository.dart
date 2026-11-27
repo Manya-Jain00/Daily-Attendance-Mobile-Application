@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/app_user.dart';
@@ -57,7 +59,7 @@ class FirestoreCompanyRepository implements CompanyRepository {
         .map(
           (q) =>
               q.docs
-                  .map((d) => AppUser.fromMap(d.id, d.data()))
+                  .map((d) => AppUser.fromMap(d.id, plainData(d.data())))
                   .nonNulls
                   .toList()
                 ..sort((a, b) => compareByName(a.name, b.name)),
@@ -92,8 +94,8 @@ class FirestoreCompanyRepository implements CompanyRepository {
     );
     if (current.empIds.isNotEmpty) {
       throw DataFailure(
-        'This team still has employees on its list for ${month.label}. Its '
-        'supervisor must take them off the list first.',
+        'This team still has people on its list for ${month.label}. Take '
+        'them off the list first.',
       );
     }
     // Filtered here rather than in the query so no extra index is needed.
@@ -175,6 +177,11 @@ class FirestoreCompanyRepository implements CompanyRepository {
     required bool active,
   }) => guardFirestore(
     () => _users.doc(phone).update({'name': name.trim(), 'active': active}),
+  );
+
+  @override
+  Future<void> setPersonPhoto(String phone, Uint8List? photo) => guardFirestore(
+    () => _users.doc(phone).update({'photo': photoValue(photo)}),
   );
 
   @override

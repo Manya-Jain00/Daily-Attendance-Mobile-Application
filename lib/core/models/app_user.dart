@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// What a signed-in person is allowed to do.
 enum UserRole {
   director,
@@ -30,6 +32,7 @@ class AppUser {
     required this.name,
     this.teamIds = const [],
     this.active = true,
+    this.photo,
   });
 
   /// Mobile number in E.164 form, e.g. `+919876543210`. Also the document id.
@@ -44,6 +47,20 @@ class AppUser {
   /// Deactivated users can still sign in to Firebase but are kept out of the
   /// app (and out of the data by the security rules).
   final bool active;
+
+  /// Small JPEG of their face, shown on their profile. Null until added.
+  final Uint8List? photo;
+
+  /// The same person with [photo] (null removes it).
+  AppUser withPhoto(Uint8List? photo) => AppUser(
+    phone: phone,
+    companyId: companyId,
+    role: role,
+    name: name,
+    teamIds: teamIds,
+    active: active,
+    photo: photo,
+  );
 
   /// Returns null when the document is missing a required field or has an
   /// unknown role, so a bad record can't crash the app.
@@ -61,6 +78,7 @@ class AppUser {
           ? teamIds.whereType<String>().toList()
           : const [],
       active: data['active'] == true,
+      photo: data['photo'] is Uint8List ? data['photo'] as Uint8List : null,
     );
   }
 }

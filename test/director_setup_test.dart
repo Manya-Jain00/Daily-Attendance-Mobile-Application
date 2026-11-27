@@ -15,7 +15,7 @@ void main() {
   Future<void> openTab(WidgetTester tester, String tab) async {
     // Phone width, and tall enough that the longest form fits on screen.
     tester.view
-      ..physicalSize = const Size(400, 1200)
+      ..physicalSize = const Size(400, 2600)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final app = FakeAuthService(initial: const SignedIn(directorUser));

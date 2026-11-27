@@ -1,5 +1,6 @@
 import 'company.dart';
 import 'day.dart';
+import 'geo.dart';
 
 /// How someone's day is recorded.
 enum AttendanceStatus {
@@ -55,6 +56,46 @@ String displayDuration(int minutes) {
   return m == 0 ? '$h h' : '$h h $m m';
 }
 
+/// Who saved an entry, when, and where their phone was. Kept on each entry,
+/// so the director can see when every person was marked, not just when the
+/// sheet was last saved.
+class EntryStamp {
+  const EntryStamp({
+    required this.byPhone,
+    this.byName = '',
+    this.at,
+    this.location,
+  });
+
+  /// Mobile number of whoever marked it.
+  final String byPhone;
+
+  /// Their name when they marked it (supervisors can't read each other's
+  /// profiles, so it's kept here).
+  final String byName;
+
+  /// Server time it was saved. Null for a moment while the save is on its
+  /// way.
+  final DateTime? at;
+
+  /// Where the phone was. Always there for a supervisor's entries; the
+  /// director's corrections don't need one.
+  final EntryLocation? location;
+
+  static EntryStamp? fromMap(Map raw) {
+    final by = raw['markedBy'];
+    if (by is! String || by.isEmpty) return null;
+    final at = raw['markedAt'];
+    final name = raw['markedByName'];
+    return EntryStamp(
+      byPhone: by,
+      byName: name is String ? name : '',
+      at: at is DateTime ? at : null,
+      location: EntryLocation.fromMap(raw['location']),
+    );
+  }
+}
+
 /// One employee's day in one team.
 class AttendanceEntry {
   const AttendanceEntry._({
@@ -65,6 +106,7 @@ class AttendanceEntry {
     this.late = false,
     this.guest = false,
     this.workingIn,
+    this.stamp,
   });
 
   /// Works out hours and the late flag from the times. Absent and leave have
@@ -114,16 +156,43 @@ class AttendanceEntry {
   /// Set when absent because they worked in this other team for the day.
   final String? workingIn;
 
+  /// When and where it was saved, and by whom. Null for a new or changed
+  /// entry that isn't saved yet: saving stamps it. Not part of [==], so an
+  /// unchanged entry compares equal to its saved copy.
+  final EntryStamp? stamp;
+
   /// Same status and times with the hours and late flag worked out again
   /// (e.g. after the director changed the late cutoff).
-  AttendanceEntry recalculated(CompanySettings settings) =>
-      AttendanceEntry.mark(
-        status,
-        inTime: inTime,
-        outTime: outTime,
-        settings: settings,
-        guest: guest,
-      );
+  AttendanceEntry recalculated(CompanySettings settings) {
+    final entry = AttendanceEntry.mark(
+      status,
+      inTime: inTime,
+      outTime: outTime,
+      settings: settings,
+      guest: guest,
+    );
+    return AttendanceEntry._(
+      status: entry.status,
+      inTime: entry.inTime,
+      outTime: entry.outTime,
+      minutes: entry.minutes,
+      late: entry.late,
+      guest: guest,
+      stamp: stamp,
+    );
+  }
+
+  /// The same entry with [stamp] (used once it's saved).
+  AttendanceEntry withStamp(EntryStamp? stamp) => AttendanceEntry._(
+    status: status,
+    inTime: inTime,
+    outTime: outTime,
+    minutes: minutes,
+    late: late,
+    guest: guest,
+    workingIn: workingIn,
+    stamp: stamp,
+  );
 
   /// Changes the times. A day shorter than the company's half-day hours
   /// becomes a half-day, and a longer one a full day.
@@ -173,9 +242,11 @@ class AttendanceEntry {
       late: raw['late'] == true,
       guest: raw['guest'] == true,
       workingIn: text('workingIn'),
+      stamp: EntryStamp.fromMap(raw),
     );
   }
 
+  /// The entry itself, without its [stamp] (the repository adds that).
   Map<String, Object> toMap() => {
     'status': status.name,
     'inTime': ?inTime,

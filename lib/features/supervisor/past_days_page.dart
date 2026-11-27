@@ -10,6 +10,7 @@ import '../../core/models/team_day.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/widgets/load_state.dart';
 import 'attendance_page.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Supervisor: the days before today that can still be corrected, with how far
 /// each team's sheet got. Tapping a team opens that day's sheet.
@@ -107,20 +108,21 @@ class _PastDaysPageState extends State<PastDaysPage> {
     final mine = _repo.myTeamIds;
     final myTeams = teams.where((t) => mine.contains(t.id)).toList();
     if (myTeams.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.groups_outlined,
         title: 'No teams yet',
         message:
-            'You have not been given a team yet. Ask your director to assign you '
-            'one.',
+            'You have not been given a team yet. Ask your ${namesOf(context).director.word} to '
+            'assign you one.',
       );
     }
     final editDays = settings.supervisorEditDays;
     if (editDays == 0) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.lock_outline,
         title: 'Only today can be marked',
-        message: 'Your director corrects earlier days.',
+        message:
+            'Your ${namesOf(context).director.word} corrects earlier days.',
       );
     }
     final days = [for (var i = 1; i <= editDays; i++) _today.addDays(-i)];
@@ -131,7 +133,8 @@ class _PastDaysPageState extends State<PastDaysPage> {
       children: [
         Text(
           'You can correct the last $editDays '
-          '${editDays == 1 ? 'day' : 'days'}. Older days: ask your director.',
+          '${editDays == 1 ? 'day' : 'days'}. Older days: ask your '
+          '${namesOf(context).director.word}.',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

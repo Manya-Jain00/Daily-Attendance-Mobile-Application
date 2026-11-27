@@ -3,16 +3,28 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/data/company_repository.dart';
+import '../../core/location/location_service.dart';
 import '../../core/models/company.dart';
+import '../../core/models/geo.dart';
+import '../../core/models/role_names.dart';
 import '../../shared/widgets/load_state.dart';
+import '../../shared/widgets/location_prompt.dart';
 import '../auth/form_validators.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// Director: the company name and office rules (office hours, late time, half-day
 /// rule, supervisor edit window).
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, required this.repository});
+  const SettingsPage({
+    super.key,
+    required this.repository,
+    required this.location,
+  });
 
   final CompanyRepository repository;
+
+  /// To set the office location to where the director is.
+  final LocationService location;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -21,6 +33,11 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
+
+  /// The company's own names for its roles; blank means the default.
+  final _roleControllers = {
+    for (final key in RoleNames.keys) key: TextEditingController(),
+  };
   late final StreamSubscription<Company> _sub;
 
   /// What's saved on the server, and the director's unsaved edits to it.
@@ -42,6 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
         if (!hadEdits) {
           _draft = company.settings;
           _nameController.text = company.name;
+          _showRoleNames(company.settings.roleNames);
         }
       }),
       onError: (Object e) => setState(() => _loadError = e),
@@ -52,6 +70,9 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     _sub.cancel();
     _nameController.dispose();
+    for (final c in _roleControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -95,9 +116,41 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Sets the office to where the director's phone is now.
+  Future<void> _useMyLocation() async {
+    setState(() => _busy = true);
+    try {
+      final here = await askLocation(
+        context,
+        widget.location,
+        why:
+            'The office location is set to where your phone is now, so '
+            'stand in the office.',
+      );
+      if (here == null || !mounted) return;
+      _edit((s) => s.withOffice(here.point));
+      showMessage(
+        context,
+        'Office set to where you are (accurate to about '
+        '${displayDistance(here.accuracy)}). Tap Save changes to keep it.',
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Fills the name fields: renamed roles as typed, defaults left blank.
+  void _showRoleNames(RoleNames names) {
+    for (final key in RoleNames.keys) {
+      final role = names.byKey(key);
+      _roleControllers[key]!.text = role.isDefault ? '' : role.title;
+    }
+  }
+
   void _discard() => setState(() {
     _draft = _saved!.settings;
     _nameController.text = _saved!.name;
+    _showRoleNames(_saved!.settings.roleNames);
   });
 
   @override
@@ -213,8 +266,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 1),
                 _StepperTile(
                   icon: Icons.edit_calendar_outlined,
-                  title: 'Supervisor edit window',
-                  subtitle: 'Supervisors can correct this many past days',
+                  title: '${namesOf(context).supervisor.title} edit window',
+                  subtitle:
+                      '${namesOf(context).supervisor.titles} can correct this many past days',
                   value: '${draft.supervisorEditDays} d',
                   semanticsLabel: 'edit window days',
                   onMinus: _busy || draft.supervisorEditDays <= 0
@@ -233,6 +287,120 @@ class _SettingsPageState extends State<SettingsPage> {
                           (s) => s.copyWith(
                             supervisorEditDays: s.supervisorEditDays + 1,
                           ),
+                        ),
+                ),
+              ],
+            ),
+          ),
+          const _SectionTitle('Names in the app'),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'What your company calls each role, on every screen and '
+                    'in the Excel file. Leave blank for the usual name.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  for (final key in RoleNames.keys) ...[
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _roleControllers[key],
+                      enabled: !_busy,
+                      maxLength: RoleName.maxLength,
+                      textCapitalization: TextCapitalization.words,
+                      onChanged: (v) => _edit(
+                        (s) =>
+                            s.copyWith(roleNames: s.roleNames.rename(key, v)),
+                      ),
+                      decoration: InputDecoration(
+                        labelText: RoleNames.defaultFor(key),
+                        hintText: _roleExamples[key],
+                        counterText: '',
+                        prefixIcon: Icon(_roleIcons[key]),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const _SectionTitle('Office location'),
+          Card(
+            margin: EdgeInsets.zero,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.place_outlined),
+                  title: Text(draft.office == null ? 'Not set' : 'Office set'),
+                  subtitle: Text(
+                    draft.office == null
+                        ? 'Set it while you are in the office. Attendance '
+                              'saved far from it is then flagged.'
+                        : 'Attendance saved more than '
+                              '${displayDistance(draft.officeRadiusM.toDouble())} '
+                              'away is flagged in red.',
+                  ),
+                  trailing: draft.office == null
+                      ? null
+                      : TextButton(
+                          onPressed: () => openMap(context, draft.office!),
+                          child: const Text('Map'),
+                        ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _useMyLocation,
+                        icon: const Icon(Icons.my_location),
+                        label: Text(
+                          draft.office == null
+                              ? 'Use where I am now'
+                              : 'Move to where I am now',
+                        ),
+                      ),
+                      if (draft.office != null)
+                        TextButton(
+                          onPressed: _busy
+                              ? null
+                              : () => _edit((s) => s.withOffice(null)),
+                          child: const Text('Remove'),
+                        ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                _StepperTile(
+                  icon: Icons.social_distance_outlined,
+                  title: 'Flag entries further than',
+                  subtitle: 'GPS indoors can be off by 20-100 m',
+                  value: displayDistance(draft.officeRadiusM.toDouble()),
+                  semanticsLabel: 'office distance',
+                  onMinus:
+                      _busy ||
+                          draft.officeRadiusM <=
+                              CompanySettings.minOfficeRadiusM
+                      ? null
+                      : () => _edit(
+                          (s) =>
+                              s.copyWith(officeRadiusM: s.officeRadiusM - 100),
+                        ),
+                  onPlus:
+                      _busy ||
+                          draft.officeRadiusM >=
+                              CompanySettings.maxOfficeRadiusM
+                      ? null
+                      : () => _edit(
+                          (s) =>
+                              s.copyWith(officeRadiusM: s.officeRadiusM + 100),
                         ),
                 ),
               ],
@@ -384,3 +552,17 @@ class _StepperTile extends StatelessWidget {
     );
   }
 }
+
+const _roleExamples = {
+  'director': 'e.g. Owner',
+  'supervisor': 'e.g. Foreman',
+  'accountant': 'e.g. Munim',
+  'employee': 'e.g. Worker',
+};
+
+const _roleIcons = {
+  'director': Icons.workspace_premium_outlined,
+  'supervisor': Icons.badge_outlined,
+  'accountant': Icons.calculate_outlined,
+  'employee': Icons.people_outline,
+};

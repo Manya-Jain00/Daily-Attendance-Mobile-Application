@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -6,8 +7,10 @@ import '../../core/data/employee_repository.dart';
 import '../../core/models/employee.dart';
 import '../../shared/widgets/brand_app_bar.dart';
 import '../../shared/widgets/error_banner.dart';
+import '../../shared/widgets/person_avatar.dart';
 import '../auth/form_validators.dart';
 import 'employees_page.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 /// The director adds a new employee to a team's monthly list (Emp ID, name,
 /// designation), or edits one (name, designation, active). The Emp ID can't
@@ -50,6 +53,7 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
     text: widget.employee?.designation,
   );
   late bool _active = widget.employee?.active ?? true;
+  late Uint8List? _photo = widget.employee?.photo;
 
   bool _busy = false;
   String? _error;
@@ -93,12 +97,14 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
     final name = _nameController.text.trim();
     final designation = _designationController.text.trim();
 
+    final photo = _photo;
+    final photoChanged = !listEquals(photo, employee?.photo);
     if (employee != null) {
-      final unchanged =
-          name == employee.name &&
-          designation == employee.designation &&
-          _active == employee.active;
-      if (unchanged) {
+      final detailsChanged =
+          name != employee.name ||
+          designation != employee.designation ||
+          _active != employee.active;
+      if (!detailsChanged && !photoChanged) {
         Navigator.pop(context);
         return;
       }
@@ -106,22 +112,30 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
     }
 
     await _run(() async {
+      final repo = widget.repository;
       if (employee == null) {
-        await widget.repository.addEmployee(
-          empId: _empIdController.text,
+        final empId = Employee.normalizeEmpId(_empIdController.text);
+        await repo.addEmployee(
+          empId: empId,
           name: name,
           designation: designation,
           teamId: widget.list.team.id,
           month: widget.list.month,
           listEmpIds: widget.list.empIds,
         );
+        if (photo != null) await repo.setEmployeePhoto(empId, photo);
       } else {
-        await widget.repository.updateEmployee(
-          employee.empId,
-          name: name,
-          designation: designation,
-          active: _active,
-        );
+        if (name != employee.name ||
+            designation != employee.designation ||
+            _active != employee.active) {
+          await repo.updateEmployee(
+            employee.empId,
+            name: name,
+            designation: designation,
+            active: _active,
+          );
+        }
+        if (photoChanged) await repo.setEmployeePhoto(employee.empId, photo);
       }
     }, employee == null ? '$name added' : 'Saved');
   }
@@ -215,16 +229,28 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
     return Scaffold(
       appBar: BrandAppBar(
         title: _adding
-            ? 'Add employee'
+            ? 'Add ${namesOf(context).employee.word}'
             : canEdit
-            ? 'Edit employee'
-            : 'Employee',
+            ? 'Edit ${namesOf(context).employee.word}'
+            : namesOf(context).employee.title,
       ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
+            if (canEdit || _photo != null) ...[
+              PhotoField(
+                name: _nameController.text,
+                photo: _photo,
+                onChanged: canEdit && !_busy
+                    ? (photo) => setState(() => _photo = photo)
+                    : null,
+                hint:
+                    'A photo helps ${namesOf(context).supervisor.words} who cannot read names.',
+              ),
+              const SizedBox(height: 16),
+            ],
             if (employee == null) ...[
               Text(
                 "Goes on ${list.team.name}'s list from ${list.month.label}.",
@@ -268,7 +294,9 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
               readOnly: !canEdit,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.next,
-              validator: validateName("Enter the employee's name"),
+              validator: validateName(
+                "Enter the ${namesOf(context).employee.word}'s name",
+              ),
               decoration: const InputDecoration(
                 labelText: 'Name',
                 prefixIcon: Icon(Icons.person_outline),
@@ -309,8 +337,8 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
               Text(
                 [
                   if (!employee.active) 'Inactive: has left the company.',
-                  'Only the director can change these details or deactivate '
-                      'an employee.',
+                  'Only the ${namesOf(context).director.word} can change these details or '
+                      'deactivate ${namesOf(context).employee.aWord}.',
                 ].join(' '),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -333,7 +361,11 @@ class _EmployeeFormPageState extends State<EmployeeFormPage> {
                           color: theme.colorScheme.onPrimary,
                         ),
                       )
-                    : Text(_adding ? 'Add employee' : 'Save changes'),
+                    : Text(
+                        _adding
+                            ? 'Add ${namesOf(context).employee.word}'
+                            : 'Save changes',
+                      ),
               ),
             if (canRemove) ...[
               const SizedBox(height: 12),

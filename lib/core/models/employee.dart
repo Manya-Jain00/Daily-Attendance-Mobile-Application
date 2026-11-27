@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// Someone whose attendance is marked, as stored in
 /// `companies/{companyId}/employees/{empId}`. Employees don't log in.
 ///
@@ -13,6 +15,7 @@ class Employee {
     required this.name,
     this.designation = '',
     this.active = true,
+    this.photo,
   });
 
   /// Upper case, e.g. `EMP-014` or `102`.
@@ -25,6 +28,10 @@ class Employee {
   /// Inactive employees (people who left) are kept so their past attendance
   /// still has a name, but they're left off new attendance sheets.
   final bool active;
+
+  /// Small JPEG of their face, so a supervisor who can't read names knows
+  /// who is who. Null until the director adds one.
+  final Uint8List? photo;
 
   static const maxEmpIdLength = 20;
 
@@ -48,8 +55,18 @@ class Employee {
       name: name,
       designation: designation is String ? designation : '',
       active: data['active'] != false,
+      photo: data['photo'] is Uint8List ? data['photo'] as Uint8List : null,
     );
   }
+
+  /// The same employee with [photo] (null removes it).
+  Employee withPhoto(Uint8List? photo) => Employee(
+    empId: empId,
+    name: name,
+    designation: designation,
+    active: active,
+    photo: photo,
+  );
 
   /// Orders like a paper register: by Emp ID, with numbers in number order
   /// (so `EMP-9` comes before `EMP-10`).

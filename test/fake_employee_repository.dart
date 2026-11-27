@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:daily_attendance/core/data/company_repository.dart';
 import 'package:daily_attendance/core/data/employee_repository.dart';
+import 'package:daily_attendance/core/location/location_service.dart';
 import 'package:daily_attendance/core/models/attendance.dart';
 import 'package:daily_attendance/core/models/company.dart';
 import 'package:daily_attendance/core/models/day.dart';
 import 'package:daily_attendance/core/models/employee.dart';
+import 'package:daily_attendance/core/models/geo.dart';
 import 'package:daily_attendance/core/models/month.dart';
 import 'package:daily_attendance/core/models/roster.dart';
 
@@ -24,6 +27,16 @@ class FakeEmployeeRepository implements EmployeeRepository {
 
   @override
   bool isAccountant = false;
+
+  @override
+  final FakeLocationService location = FakeLocationService();
+
+  /// Who saves, for the stamps.
+  String phone = '+919800000001';
+  String name = 'Sunita';
+
+  /// The location each save was given, in order.
+  final savedLocations = <EntryLocation?>[];
 
   final _changes = StreamController<void>.broadcast();
 
@@ -90,7 +103,15 @@ class FakeEmployeeRepository implements EmployeeRepository {
       name: name.trim(),
       designation: designation.trim(),
       active: active,
+      photo: employees[i].photo,
     );
+    _changed();
+  }
+
+  @override
+  Future<void> setEmployeePhoto(String empId, Uint8List? photo) async {
+    final i = employees.indexWhere((e) => e.empId == empId);
+    employees[i] = employees[i].withPhoto(photo);
     _changed();
   }
 
@@ -126,12 +147,28 @@ class FakeEmployeeRepository implements EmployeeRepository {
   Future<void> saveAttendance(
     String teamId,
     Day date,
-    Map<String, AttendanceEntry> entries,
-  ) async {
+    Map<String, AttendanceEntry> entries, {
+    EntryLocation? location,
+  }) async {
     if (failNextSave case final message?) {
       failNextSave = null;
       throw DataFailure(message);
     }
+    savedLocations.add(location);
+    final now = DateTime(2026, 11, 27, 9, 42);
+    entries = {
+      for (final e in entries.entries)
+        e.key: e.value.stamp == null
+            ? e.value.withStamp(
+                EntryStamp(
+                  byPhone: phone,
+                  byName: name,
+                  at: now,
+                  location: location,
+                ),
+              )
+            : e.value,
+    };
     sheets
       ..removeWhere((s) => s.teamId == teamId && s.date == date)
       ..add(
@@ -153,4 +190,37 @@ class FakeEmployeeRepository implements EmployeeRepository {
       );
     _changed();
   }
+}
+
+/// [LocationService] for tests: answers with [result], or with
+/// [afterPermission] once permission is asked for and [allow] is true.
+class FakeLocationService implements LocationService {
+  static const office = EntryLocation(
+    point: GeoPoint(28.6139, 77.2090),
+    accuracy: 12,
+  );
+
+  LocationResult result = const Located(office);
+  LocationResult afterPermission = const Located(office);
+  bool allow = true;
+
+  int permissionRequests = 0;
+  int locationSettingsOpened = 0;
+  int appSettingsOpened = 0;
+
+  @override
+  Future<LocationResult> current() async => result;
+
+  @override
+  Future<bool> requestPermission() async {
+    permissionRequests++;
+    if (allow) result = afterPermission;
+    return allow;
+  }
+
+  @override
+  Future<void> openLocationSettings() async => locationSettingsOpened++;
+
+  @override
+  Future<void> openAppSettings() async => appSettingsOpened++;
 }

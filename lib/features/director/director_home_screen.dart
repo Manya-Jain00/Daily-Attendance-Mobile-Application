@@ -11,6 +11,7 @@ import 'people_page.dart';
 import 'reports_page.dart';
 import 'settings_page.dart';
 import 'teams_page.dart';
+import '../../shared/widgets/role_names_scope.dart';
 
 class DirectorHomeScreen extends StatefulWidget {
   const DirectorHomeScreen({super.key});
@@ -64,7 +65,7 @@ class _DirectorHomeScreenState extends State<DirectorHomeScreen> {
           page: TeamsPage(repository: repository),
         ),
         ShellTab(
-          label: 'Employees',
+          label: namesOf(context).employee.titles,
           icon: Icons.people_outline,
           selectedIcon: Icons.people,
           page: EmployeesPage(
@@ -88,7 +89,10 @@ class _DirectorHomeScreenState extends State<DirectorHomeScreen> {
           label: 'Settings',
           icon: Icons.settings_outlined,
           selectedIcon: Icons.settings,
-          page: SettingsPage(repository: repository),
+          page: SettingsPage(
+            repository: repository,
+            location: attendance.location,
+          ),
         ),
       ],
     );
